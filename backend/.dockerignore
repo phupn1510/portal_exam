@@ -1,0 +1,7 @@
+backend/
+frontend/
+deploy.sh
+vercel.json
+DEPLOY.md
+.gitignore
+!.gitignore
