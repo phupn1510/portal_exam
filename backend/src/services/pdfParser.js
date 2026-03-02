@@ -1,7 +1,5 @@
-// PDF Parsing Service
-import pdfplumber from 'pdfplumber';
-import pytesseract from 'pytesseract';
-import { fromBuffer } from 'pdf2pic';
+// PDF Parsing Service using pdf-parse
+import pdf from 'pdf-parse';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -22,41 +20,22 @@ class PDFParser {
                 fs.mkdirSync(fileImagesDir, { recursive: true });
             }
 
-            const pdf = await pdfplumber.open(filePath);
-            console.log(`Processing PDF with ${pdf.pages.length} pages...`);
-
-            for (let pageNum = 0; pageNum < pdf.pages.length; pageNum++) {
-                const page = pdf.pages[pageNum];
-                
-                // Check if page has images (scanned PDF)
-                const hasImages = page.images && page.images.length > 0;
-                
-                let text = '';
-                let images = [];
-                
-                if (hasImages) {
-                    // For scanned PDFs, use OCR
-                    const pageImage = await this.extractPageAsImage(filePath, pageNum + 1, fileImagesDir);
-                    if (pageImage) {
-                        images.push(pageImage);
-                        text = await this.performOCR(pageImage);
-                    }
-                } else {
-                    // For digital PDFs, extract text directly
-                    text = page.extract_text() || '';
-                }
-
-                // Parse questions from extracted text
-                const pageQuestions = this.parseQuestionsFromText(text, pageNum + 1, images);
-                questions.push(...pageQuestions);
-            }
-
-            await pdf.close();
-
+            // Read and parse PDF
+            const dataBuffer = fs.readFileSync(filePath);
+            const pdfData = await pdf(dataBuffer);
+            
+            console.log(`Processing PDF with ${pdfData.numpages} pages...`);
+            
+            // Extract text from all pages
+            const fullText = pdfData.text;
+            
+            // Parse questions from extracted text
+            const extractedQuestions = this.parseQuestionsFromText(fullText, 1, []);
+            
             return {
                 success: true,
-                questionCount: questions.length,
-                questions
+                questionCount: extractedQuestions.length,
+                questions: extractedQuestions
             };
 
         } catch (error) {
@@ -65,37 +44,6 @@ class PDFParser {
                 success: false,
                 error: error.message
             };
-        }
-    }
-
-    async extractPageAsImage(pdfPath, pageNum, outputDir) {
-        try {
-            const options = {
-                density: 150,
-                format: 'png',
-                width: 1200,
-                height: 1690,
-                saveFilename: `page-${pageNum}`,
-                savePath: outputDir
-            };
-
-            const convert = fromBuffer(fs.readFileSync(pdfPath), options);
-            const imagePath = await convert(pageNum);
-            return imagePath.path;
-        } catch (error) {
-            console.error('Image extraction error:', error);
-            return null;
-        }
-    }
-
-    async performOCR(imagePath) {
-        try {
-            const image = fs.readFileSync(imagePath);
-            const text = pytesseract.image_to_string(image, lang='vie+eng');
-            return text;
-        } catch (error) {
-            console.error('OCR error:', error);
-            return '';
         }
     }
 
@@ -110,6 +58,8 @@ class PDFParser {
         
         for (const line of lines) {
             const trimmed = line.trim();
+            if (!trimmed) continue;
+            
             const match = trimmed.match(questionPattern);
             
             if (match) {
@@ -126,7 +76,7 @@ class PDFParser {
                     options: [],
                     correctAnswer: null,
                     pageNumber: pageNum,
-                    imageUrl: images.length > 0 ? images[0] : null,
+                    imageUrl: null,
                     type: this.detectQuestionType(match[2])
                 };
             } else if (currentQuestion) {

@@ -14,7 +14,7 @@
     "multer": "^1.4.5-lts.1",
     "openai": "^4.28.0",
     "pdf2pic": "^3.0.2",
-    "pdfplumber": "^0.11.4",
+    "pdf-parse": "^1.1.1",
     "puppeteer": "^22.6.0",
     "uuid": "^9.0.1"
   },
