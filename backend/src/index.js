@@ -1,3 +1,4 @@
+import { initDatabase } from './services/database.js';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -99,7 +100,18 @@ app.use((err, req, res, next) => {
     });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    
+    // Initialize database if DATABASE_URL is present
+    if (process.env.DATABASE_URL) {
+        try {
+            await initDatabase();
+            console.log('✅ Database initialized');
+        } catch (err) {
+            console.log('⚠️ Database init failed (continuing anyway):', err.message);
+        }
+    }
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📚 API endpoints:`);
     console.log(`   - POST /api/auth/login - Login with Google`);

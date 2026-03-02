@@ -5,12 +5,10 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import pdfParser from '../services/pdfParser.js';
 import { isAuthenticated, isAdmin, getCurrentUser } from '../services/authService.js';
+import { saveExam, getExams, getExamById, deleteExam } from '../services/database.js';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
-
-// In-memory storage (replace with database in production)
-const quizzes = new Map();
 
 // Subject categories
 const SUBJECTS = {
@@ -56,13 +54,13 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
             quizSubject = 'math';
         }
 
-        // Store quiz data
+        // Prepare quiz data
         const quiz = {
             id: fileId,
             filename: req.file.originalname,
             title: title || req.file.originalname.replace('.pdf', ''),
             subject: quizSubject,
-            grade: grade || '2', // Default to grade 2
+            grade: grade || '2',
             uploadedBy: req.user.email,
             uploadedAt: new Date().toISOString(),
             questions: result.questions,
@@ -70,7 +68,10 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
             status: 'ready'
         };
         
-        quizzes.set(fileId, quiz);
+        // Save to database if available, otherwise use memory
+        if (process.env.DATABASE_URL) {
+            await saveExam(quiz.title, quizSubject, quiz, req.user.email);
+        }
         
         res.json({
             success: true,
@@ -93,33 +94,39 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
 });
 
 // Get quiz by ID (Public - for taking quiz)
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
     const { id } = req.params;
-    const quiz = quizzes.get(id);
     
-    if (!quiz) {
-        return res.status(404).json({ error: 'Quiz not found' });
+    // Try database first
+    if (process.env.DATABASE_URL) {
+        const exam = await getExamById(id);
+        if (exam) {
+            const quiz = exam.questions;
+            quiz.id = exam.id;
+            return res.json(quiz);
+        }
     }
     
-    // Return full quiz for taking
-    res.json(quiz);
+    res.status(404).json({ error: 'Quiz not found' });
 });
 
 // Get list of all quizzes (Public)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     const { subject, grade } = req.query;
     
-    let quizList = Array.from(quizzes.values()).map(q => ({
-        id: q.id,
-        filename: q.filename,
-        title: q.title,
-        subject: q.subject,
-        grade: q.grade,
-        questionCount: q.questionCount,
-        uploadedAt: q.uploadedAt,
-        status: q.status,
-        subjectInfo: SUBJECTS[q.subject] || SUBJECTS.other
-    }));
+    let quizList = [];
+    
+    // Try database first
+    if (process.env.DATABASE_URL) {
+        const exams = await getExams();
+        quizList = exams.map(e => ({
+            id: e.id,
+            title: e.title,
+            subject: e.subject,
+            uploadedAt: e.created_at,
+            subjectInfo: SUBJECTS[e.subject] || SUBJECTS.other
+        }));
+    }
     
     // Filter by subject if specified
     if (subject) {
@@ -158,14 +165,13 @@ router.get('/meta/grades', (req, res) => {
 });
 
 // Delete quiz (Admin only)
-router.delete('/:id', isAuthenticated, isAdmin, (req, res) => {
+router.delete('/:id', isAuthenticated, isAdmin, async (req, res) => {
     const { id } = req.params;
     
-    if (!quizzes.has(id)) {
-        return res.status(404).json({ error: 'Quiz not found' });
+    if (process.env.DATABASE_URL) {
+        await deleteExam(id);
     }
     
-    quizzes.delete(id);
     res.json({ success: true, message: 'Quiz deleted' });
 });
 
