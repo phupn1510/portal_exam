@@ -3,7 +3,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import session from 'express-session';
 
-// In-memory user store (replace with database in production)
+// In-memory user store (used as cache; session holds the full user for persistence across restarts)
 const users = new Map();
 
 // Admin emails - can be configured via environment
@@ -36,15 +36,19 @@ export function configurePassport() {
         }));
     }
 
-    // Serialize user
+    // Serialize user — store full user object in session so it survives server restarts
     passport.serializeUser((user, done) => {
-        done(null, user.id);
+        done(null, user);
     });
 
-    // Deserialize user
-    passport.deserializeUser((id, done) => {
-        const user = users.get(id);
-        done(null, user || null);
+    // Deserialize user — restore from session data (also update in-memory cache)
+    passport.deserializeUser((user, done) => {
+        if (user && user.id) {
+            users.set(user.id, user); // refresh in-memory cache
+            done(null, user);
+        } else {
+            done(null, null);
+        }
     });
 }
 
@@ -55,6 +59,7 @@ export function configureSession(app) {
         saveUninitialized: false,
         cookie: {
             secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
             httpOnly: true,
             maxAge: 24 * 60 * 60 * 1000 // 24 hours
         }
