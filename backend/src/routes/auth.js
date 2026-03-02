@@ -17,7 +17,7 @@ router.get('/google/callback',
     (req, res) => {
         // Redirect to frontend with success
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        res.redirect(`${frontendUrl}/auth/callback?success=true`);
+        res.redirect(`${frontendUrl}/?success=true`);
     }
 );
 
