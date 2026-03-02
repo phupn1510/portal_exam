@@ -53,13 +53,18 @@ export function configurePassport() {
 }
 
 export function configureSession(app) {
+    // Check production via NODE_ENV or Railway's own env variable (Railway does not auto-set NODE_ENV)
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
+
+    console.log(`🔧 Session config: isProduction=${isProduction}, NODE_ENV=${process.env.NODE_ENV}, RAILWAY_ENV=${process.env.RAILWAY_ENVIRONMENT}`);
+
     app.use(session({
         secret: process.env.SESSION_SECRET || 'ioe-quiz-secret-key-change-in-production',
         resave: false,
         saveUninitialized: false,
         cookie: {
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            secure: isProduction,             // HTTPS only in production
+            sameSite: isProduction ? 'none' : 'lax',  // 'none' required for cross-origin (Vercel → Railway)
             httpOnly: true,
             maxAge: 24 * 60 * 60 * 1000 // 24 hours
         }
