@@ -5,9 +5,16 @@
 }
 
 .header {
-  text-align: center;
   color: white;
   margin-bottom: 40px;
+}
+
+.headerTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 20px;
 }
 
 .header h1 {
@@ -20,6 +27,77 @@
   opacity: 0.9;
 }
 
+.authSection {
+  display: flex;
+  align-items: center;
+}
+
+.loginBtn {
+  background: white;
+  color: #2C3E50;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.loginBtn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  padding: 8px 16px;
+  border-radius: 12px;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.userDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.userName {
+  font-weight: 600;
+  color: #2C3E50;
+  font-size: 0.9rem;
+}
+
+.adminBadge {
+  background: #FF6B6B;
+  color: white;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.logoutBtn {
+  background: #f0f0f0;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.logoutBtn:hover {
+  background: #e0e0e0;
+}
+
 .uploadSection {
   margin-bottom: 40px;
 }
@@ -28,7 +106,7 @@
   background: white;
   border: 3px dashed #ddd;
   border-radius: 20px;
-  padding: 60px 40px;
+  padding: 40px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -42,28 +120,74 @@
 }
 
 .uploadIcon {
-  font-size: 4rem;
-  margin-bottom: 16px;
+  font-size: 3rem;
+  margin-bottom: 12px;
 }
 
 .uploadZone h3 {
   color: #2C3E50;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   margin-bottom: 8px;
 }
 
 .uploadZone p {
   color: #666;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
-.hint {
-  display: inline-block;
-  background: #f0f0f0;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  color: #888;
+.uploadOptions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.input, .select {
+  padding: 12px 16px;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: white;
+}
+
+.input {
+  flex: 1;
+}
+
+.select {
+  min-width: 120px;
+  cursor: pointer;
+}
+
+.input:focus, .select:focus {
+  outline: none;
+  border-color: #4ECDC4;
+}
+
+.filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.filterBtn {
+  background: rgba(255,255,255,0.2);
+  border: 2px solid transparent;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.filterBtn:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+.filterBtn.active {
+  background: white;
+  color: #2C3E50;
 }
 
 .spinner {
@@ -96,7 +220,7 @@
 .quizCard {
   background: white;
   border-radius: 16px;
-  padding: 24px;
+  padding: 20px;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -111,11 +235,19 @@
 }
 
 .quizIcon {
-  font-size: 2.5rem;
+  font-size: 2rem;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  flex-shrink: 0;
 }
 
 .quizInfo {
   flex: 1;
+  min-width: 0;
 }
 
 .quizInfo h3 {
@@ -125,27 +257,28 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
 }
 
 .quizInfo p {
   color: #4ECDC4;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  margin-bottom: 2px;
 }
 
 .date {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #888;
 }
 
 .startBtn {
   background: linear-gradient(135deg, #4ECDC4 0%, #6EE7DE 100%);
   color: white;
-  padding: 10px 20px;
+  padding: 10px 16px;
   border-radius: 10px;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 .empty {
@@ -156,12 +289,37 @@
   color: white;
 }
 
+.loading {
+  text-align: center;
+  color: white;
+  padding: 60px;
+  font-size: 1.2rem;
+}
+
 @media (max-width: 600px) {
   .header h1 {
     font-size: 1.8rem;
   }
   
+  .headerTop {
+    flex-direction: column;
+  }
+  
   .grid {
     grid-template-columns: 1fr;
+  }
+  
+  .filters {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 8px;
+  }
+  
+  .filterBtn {
+    flex-shrink: 0;
+  }
+  
+  .uploadOptions {
+    flex-direction: column;
   }
 }
