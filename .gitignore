@@ -7,3 +7,12 @@ dist/
 .env*.local
 .DS_Store
 uploads/
+!.env.production
+.next/
+out/
+build/
+dist/
+*.log
+.env*.local
+.DS_Store
+uploads/
