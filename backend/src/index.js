@@ -34,6 +34,9 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
+// Trust Railway's reverse proxy (required for secure cookies + express-session)
+app.set('trust proxy', 1);
+
 // Configure authentication
 configurePassport();
 configureSession(app);
