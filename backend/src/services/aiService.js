@@ -157,95 +157,142 @@ Mỗi đề cách nhau bằng dòng phân cách (---)..`
 
     // ─── OCR: parse questions from images ─────────────────────────────────────
 
-    async parseQuestionsFromImages(base64Images, provider = null) {
-        const p = provider || await this.resolveOcrProvider();
-        const { vision } = this._modelConfig(p);
+   async parseQuestionsFromImages(base64Images, provider = null) {
+    const p = provider || await this.resolveOcrProvider();
+    const { vision } = this._modelConfig(p);
 
-        if (!vision) {
-            console.warn(`⚠️ Provider ${p} does not support vision — falling back to openai`);
-            return this.parseQuestionsFromImages(base64Images, 'openai');
-        }
+    if (!vision) {
+        console.warn(`⚠️ Provider ${p} does not support vision — falling back to openai`);
+        return this.parseQuestionsFromImages(base64Images, 'openai');
+    }
 
-        const client = await this._client(p);
-        if (!client) { console.warn(`⚠️ No API key for provider: ${p}`); return []; }
+    const client = await this._client(p);
+    if (!client) { console.warn(`⚠️ No API key for provider: ${p}`); return []; }
 
-        const start = Date.now();
-        this._log('📡👁️', p, vision, null);
+    const start = Date.now();
+    this._log('📡👁️', p, vision, null);
 
+    try {
+        const imageContents = base64Images.map(b64 => ({
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${b64}`, detail: 'high' }
+        }));
+
+        const response = await client.chat.completions.create({
+            model: vision,
+            messages: [
+                {
+                    role: 'system',
+                    content: `Bạn là hệ thống OCR chuyên xử lý đề thi giáo dục tiếng Việt.
+
+NHIỆM VỤ: Đọc ảnh đề thi/đáp án và trả về JSON array.
+
+BỎ QUA: Quảng cáo, watermark, header/footer (số điện thoại, "Team Cô Hoa", "Nam Thắng", zalo, khóa học...), số trang.
+
+GIỮ NGUYÊN: Phép tính (6−1=5), dấu tiếng Việt, ký hiệu toán (<, >, =), tên riêng, tiếng Anh.
+Nếu có hình không đọc được, ghi "[Hình minh họa]".
+
+BẮT BUỘC: Chỉ trả về JSON array, KHÔNG markdown, KHÔNG giải thích, KHÔNG text ngoài JSON.
+
+FORMAT:
+[
+  {
+    "de_so": 1,
+    "questions": [
+      {
+        "cau": 1,
+        "dap_an": "Đúng",
+        "giai_thich": "Từ 6 đếm lùi 1 bước. 6−1=5. Bạn Hùng minh họa đúng."
+      },
+      {
+        "cau": 2,
+        "dap_an": "Sai",
+        "giai_thich": "Từ 6 đếm lùi 1 bước. 6−1=5. Bạn Mai minh họa sai."
+      }
+    ]
+  },
+  {
+    "de_so": 2,
+    "questions": [...]
+  }
+]
+
+Quy tắc cho "dap_an": Chỉ ghi đáp án ngắn gọn cuối cùng (số, từ, Đúng/Sai, tên bạn...).
+Quy tắc cho "giai_thich": Ghi toàn bộ phần giải thích/hướng dẫn.
+Nếu không có giải thích, để "giai_thich": "".`
+                },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'Trích xuất tất cả câu hỏi và đáp án từ các trang đề thi này. Trả về JSON array:' },
+                        ...imageContents
+                    ]
+                }
+            ],
+            max_tokens: 4000,
+            temperature: 0
+        });
+
+        const content = response.choices[0].message.content.trim();
+        this._log('✅👁️', p, vision, Date.now() - start, content);
+
+        // Try to extract JSON array from response
+        const parsed = this._extractJsonArray(content);
+        return parsed;
+    } catch (err) {
+        this._log('❌👁️', p, vision, Date.now() - start, err.message);
+        return [];
+    }
+}
+
+/**
+ * Robustly extract JSON array from AI response
+ * Handles: raw JSON, markdown-wrapped JSON, and text with embedded JSON
+ */
+_extractJsonArray(content) {
+    // 1. Strip markdown code fences if present
+    let cleaned = content
+        .replace(/^```(?:json)?\s*\n?/i, '')
+        .replace(/\n?```\s*$/i, '')
+        .trim();
+
+    // 2. Try direct parse
+    try {
+        const parsed = JSON.parse(cleaned);
+        return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) { /* continue */ }
+
+    // 3. Try to find JSON array in the text
+    const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (match) {
         try {
-            const imageContents = base64Images.map(b64 => ({
-                type: 'image_url',
-                image_url: { url: `data:image/jpeg;base64,${b64}`, detail: 'high' }
-            }));
+            return JSON.parse(match[0]);
+        } catch (e) { /* continue */ }
+    }
 
-            const response = await client.chat.completions.create({
-                model: vision,
-                messages: [
-                    {
-                        role: 'system',
-                        content: `Bạn là một hệ thống OCR chuyên xử lý tài liệu giáo dục tiếng Việt. Hãy đọc và trích xuất TOÀN BỘ nội dung từ file PDF đề thi/đáp án sau đây.
-
-YÊU CẦU:
-1. Trích xuất theo từng ĐỀ SỐ (Đề số 1, Đề số 2, ...) riêng biệt.
-2. Với mỗi đề, liệt kê từng câu hỏi theo format:
-   
-   **ĐỀ SỐ [X]**
-   Câu [số] . Đáp án: [nội dung đáp án]
-   [Phần giải thích/hướng dẫn nếu có]
-
-3. Giữ nguyên:
-   - Tất cả phép tính toán học (ví dụ: 6−1=5, 9−3=6)
-   - Dấu tiếng Việt (ă, â, ê, ô, ơ, ư, đ và các dấu thanh)
-   - Các ký hiệu toán học (<, >, =, +, −)
-   - Số La Mã, số thường
-   - Tên riêng (bạn Hùng, bạn Mai, bạn Hà...)
-
-4. BỎ QUA:
-   - Header/footer quảng cáo (số điện thoại, thông tin liên hệ, 
-     "Team Cô Hoa", "Nam Thắng", thông tin zalo...)
-   - Watermark
-   - Thông tin bản quyền/khóa học
-   - Số trang
-
-5. Nếu có hình ảnh minh họa (number line, hình vẽ đếm lùi, 
-   hình học...) mà không đọc được, ghi chú: [Hình minh họa: mô tả ngắn]
-
-6. Phân biệt rõ giữa:
-   - Phần ĐÁP ÁN (đáp án đúng)
-   - Phần HƯỚNG DẪN (giải thích cách làm)
-   - Phần MINH HỌA (ví dụ trực quan)
-
-7. Đối với các câu Tiếng Việt (vần, từ, câu), giữ nguyên 
-   chính tả và dấu câu gốc.
-
-8. Đối với các câu Tiếng Anh (English questions), giữ nguyên 
-   tiếng Anh.
-
-OUTPUT FORMAT:
-Xuất ra dạng text có cấu trúc, dễ đọc, có thể copy-paste được.
-Mỗi đề cách nhau bằng dòng phân cách (---)..`
-                    },
-                    {
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: 'Extract all questions and answer choices from these exam pages:' },
-                            ...imageContents
-                        ]
-                    }
-                ],
-                max_tokens: 4000,
-                temperature: 0
-            });
-
-            const content = response.choices[0].message.content.trim();
-            this._log('✅👁️', p, vision, Date.now() - start, content);
-            const match = content.match(/\[[\s\S]*\]/);
-            return match ? JSON.parse(match[0]) : [];
-        } catch (err) {
-            this._log('❌👁️', p, vision, Date.now() - start, err.message);
-            return [];
+    // 4. Try to fix truncated JSON (missing closing brackets)
+    let fixAttempt = cleaned;
+    if (!fixAttempt.endsWith(']')) {
+        // Find last complete object (ending with })
+        const lastBrace = fixAttempt.lastIndexOf('}');
+        if (lastBrace > 0) {
+            fixAttempt = fixAttempt.substring(0, lastBrace + 1);
+            // Close any open arrays
+            const openBrackets = (fixAttempt.match(/\[/g) || []).length;
+            const closeBrackets = (fixAttempt.match(/\]/g) || []).length;
+            for (let i = 0; i < openBrackets - closeBrackets; i++) {
+                fixAttempt += ']';
+            }
+            try {
+                return JSON.parse(fixAttempt);
+            } catch (e) { /* continue */ }
         }
     }
+
+    // 5. Fallback: return empty
+    console.warn('⚠️ Could not parse JSON from OCR response');
+    return [];
+}
 
     // ─── Explain answer ───────────────────────────────────────────────────────
 
