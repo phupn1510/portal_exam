@@ -52,18 +52,32 @@ class AIService {
     // ─── Resolve the active OCR provider ─────────────────────────────────────
 
     async resolveOcrProvider() {
-        // Explicit override from DB setting
+        // Read from DB first (set via admin page)
         try {
-            const { getSetting } = await import('./database.js');
-            const pref = await getSetting?.('ocr_provider');
-            if (pref) return pref;
+            const pref = await getApiKey('ocr_provider');
+            if (pref && pref !== 'auto') {
+                console.log(`[OCR] provider from DB: ${pref}`);
+                return pref;
+            }
         } catch { /* ignore */ }
-        // Auto-detect: first available key
+        // Auto-detect: first provider with a valid key
         for (const p of ['openai', 'alibaba', 'kimi']) {
+            const client = await this._client(p);
+            if (client) { console.log(`[OCR] auto-detected provider: ${p}`); return p; }
+        }
+        return 'openai';
+    }
+
+    async resolveAnswerProvider() {
+        try {
+            const pref = await getApiKey('answer_provider');
+            if (pref && pref !== 'auto') return pref;
+        } catch { /* ignore */ }
+        for (const p of ['openai', 'alibaba', 'kimi', 'gemini']) {
             const client = await this._client(p);
             if (client) return p;
         }
-        return 'openai'; // fallback (will fail gracefully if no key)
+        return 'openai';
     }
 
     // ─── OCR: parse questions from text ───────────────────────────────────────

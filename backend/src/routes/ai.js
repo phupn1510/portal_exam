@@ -7,24 +7,18 @@ const router = express.Router();
 router.post('/explain', async (req, res) => {
     try {
         const { question, selectedAnswer, provider } = req.body;
-        
-        if (!question) {
-            return res.status(400).json({ error: 'question is required' });
-        }
-        
-        const result = await aiService.explainAnswer(
-            question, 
-            selectedAnswer, 
-            provider || 'openai'
-        );
-        
+        if (!question) return res.status(400).json({ error: 'question is required' });
+
+        // Use explicitly passed provider, or fall back to admin-configured default
+        const resolvedProvider = provider || await aiService.resolveAnswerProvider();
+        const result = await aiService.explainAnswer(question, selectedAnswer, resolvedProvider);
         res.json(result);
-        
     } catch (error) {
         console.error('AI explain error:', error);
         res.status(500).json({ error: error.message });
     }
 });
+
 
 // Get batch explanations
 router.post('/explain-batch', async (req, res) => {

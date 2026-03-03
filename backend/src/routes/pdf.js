@@ -89,7 +89,7 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
             };
 
             if (process.env.DATABASE_URL) {
-                await saveExam(quiz.title, quizSubject, quiz, req.user.email, fileHash, tags);
+                await saveExam(quiz.title, quizSubject, quiz, req.user.email, fileHash, tags, quiz.grade);
             }
 
             updateJob(jobId, {
@@ -151,6 +151,7 @@ router.get('/', async (req, res) => {
             id: e.id,
             title: e.title,
             subject: e.subject,
+            grade: e.grade || '2',
             tags: e.tags || [],
             uploadedAt: e.created_at,
             subjectInfo: SUBJECTS[e.subject] || SUBJECTS.other

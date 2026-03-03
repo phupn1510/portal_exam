@@ -14,11 +14,20 @@ const PROVIDER_LABELS = {
   alibaba: 'Alibaba Cloud (Qwen)',
   gemini:  'Google Gemini',
 };
+
 const OCR_OPTIONS = [
-  { value: 'auto',    label: '🤖 Auto (chọn tự động theo key có sẵn)' },
-  { value: 'openai',  label: '🟢 OpenAI GPT-4o' },
-  { value: 'alibaba', label: '🟠 Alibaba Qwen-Max + Qwen-VL-Max' },
-  { value: 'kimi',    label: '🔵 Kimi K2 (chỉ text, không có vision)' },
+  { value: 'auto',    label: '🤖 Auto (dùng key đầu tiên có sẵn: OpenAI → Alibaba → Kimi)' },
+  { value: 'openai',  label: '🟢 OpenAI — gpt-4o-mini (text) / gpt-4o (vision)' },
+  { value: 'alibaba', label: '🟠 Alibaba Qwen — qwen-max (text) / qwen-vl-max (vision)' },
+  { value: 'kimi',    label: '🔵 Kimi K2 — kimi-k2 (text only, không có vision)' },
+];
+
+const ANSWER_OPTIONS = [
+  { value: 'auto',    label: '🤖 Auto (dùng key đầu tiên có sẵn)' },
+  { value: 'openai',  label: '🟢 OpenAI GPT-4o-mini' },
+  { value: 'alibaba', label: '🟠 Alibaba Qwen-Max' },
+  { value: 'kimi',    label: '🔵 Kimi K2' },
+  { value: 'gemini',  label: '🟣 Google Gemini 1.5 Flash' },
 ];
 
 export default function AdminPage() {
@@ -27,6 +36,7 @@ export default function AdminPage() {
   const [newEmail, setNewEmail] = useState('');
   const [keyInputs, setKeyInputs] = useState({ openai: '', kimi: '', alibaba: '', gemini: '' });
   const [ocrProvider, setOcrProviderLocal] = useState('auto');
+  const [answerProvider, setAnswerProviderLocal] = useState('auto');
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState('');
 
@@ -42,11 +52,10 @@ export default function AdminPage() {
       const { data } = await axios.get(`${API_URL}/admin/settings`, { withCredentials: true });
       setSettings(data);
       setOcrProviderLocal(data.ocrProvider || 'auto');
+      setAnswerProviderLocal(data.answerProvider || 'auto');
     } catch (err) {
       if (err.response?.status === 403) showToast('Chỉ owner mới truy cập được trang này', 'error');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const addEmail = async () => {
@@ -54,8 +63,7 @@ export default function AdminPage() {
     try {
       const { data } = await axios.post(`${API_URL}/admin/emails`, { email: newEmail }, { withCredentials: true });
       setSettings(s => ({ ...s, adminEmails: data.adminEmails }));
-      setNewEmail('');
-      showToast(`✅ Đã thêm ${newEmail}`);
+      setNewEmail(''); showToast(`✅ Đã thêm ${newEmail}`);
     } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
   };
 
@@ -91,6 +99,15 @@ export default function AdminPage() {
     finally { setSaving(''); }
   };
 
+  const saveAnswerProvider = async () => {
+    setSaving('answer');
+    try {
+      await axios.post(`${API_URL}/admin/answer-provider`, { provider: answerProvider }, { withCredentials: true });
+      showToast(`✅ Answer provider → ${answerProvider}`);
+    } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
+    finally { setSaving(''); }
+  };
+
   if (loading) return <div className={styles.loading}>Đang tải...</div>;
   if (!settings) return <div className={styles.error}>Không có quyền truy cập</div>;
 
@@ -108,7 +125,7 @@ export default function AdminPage() {
       <section className={styles.card}>
         <h2>👤 Danh sách Admin (có quyền upload)</h2>
         <ul className={styles.emailList}>
-          {settings.adminEmails.map(email => (
+          {(settings.adminEmails || []).map(email => (
             <li key={email} className={styles.emailItem}>
               <span>{email}</span>
               {email === settings.ownerEmail
@@ -125,8 +142,8 @@ export default function AdminPage() {
 
       {/* OCR Provider */}
       <section className={styles.card}>
-        <h2>🔍 AI Provider cho OCR (đọc đề thi)</h2>
-        <p className={styles.hint}>Chọn provider dùng để trích xuất câu hỏi từ PDF khi upload.</p>
+        <h2>🔍 AI Provider cho OCR (đọc đề thi từ PDF)</h2>
+        <p className={styles.hint}>Chọn AI dùng để trích xuất câu hỏi khi upload PDF.</p>
         <div className={styles.ocrRow}>
           {OCR_OPTIONS.map(o => (
             <label key={o.value} className={`${styles.ocrOption} ${ocrProvider === o.value ? styles.ocrActive : ''}`}>
@@ -136,7 +153,24 @@ export default function AdminPage() {
           ))}
         </div>
         <button className={styles.saveBtn} onClick={saveOcrProvider} disabled={saving === 'ocr'}>
-          {saving === 'ocr' ? '...' : '💾 Lưu cài đặt OCR'}
+          {saving === 'ocr' ? '...' : '💾 Lưu OCR Provider'}
+        </button>
+      </section>
+
+      {/* Answer Provider */}
+      <section className={styles.card}>
+        <h2>💬 AI Provider mặc định cho giải thích đáp án</h2>
+        <p className={styles.hint}>Chọn AI mặc định khi học sinh nhấn "Giải thích". Học sinh vẫn có thể đổi từng câu.</p>
+        <div className={styles.ocrRow}>
+          {ANSWER_OPTIONS.map(o => (
+            <label key={o.value} className={`${styles.ocrOption} ${answerProvider === o.value ? styles.ocrActive : ''}`}>
+              <input type="radio" name="answerProvider" value={o.value} checked={answerProvider === o.value} onChange={() => setAnswerProviderLocal(o.value)} />
+              {o.label}
+            </label>
+          ))}
+        </div>
+        <button className={styles.saveBtn} onClick={saveAnswerProvider} disabled={saving === 'answer'}>
+          {saving === 'answer' ? '...' : '💾 Lưu Answer Provider'}
         </button>
       </section>
 
@@ -148,11 +182,15 @@ export default function AdminPage() {
           <div key={p} className={styles.keyRow}>
             <div className={styles.keyLabel}>
               <strong>{PROVIDER_LABELS[p]}</strong>
-              {settings.apiKeys[p]
+              {settings.apiKeys?.[p]
                 ? <span className={styles.keyStatus}>✅ {settings.apiKeys[p]}</span>
                 : <span className={styles.keyMissing}>⚠️ Chưa cấu hình</span>}
             </div>
-            {p === 'alibaba' && <p className={styles.hint} style={{marginBottom:8}}>Base URL: dashscope-intl.aliyuncs.com — Models: qwen-max (text), qwen-vl-max (vision)</p>}
+            {p === 'alibaba' && (
+              <p className={styles.hint} style={{marginBottom:8}}>
+                Endpoint: dashscope-intl.aliyuncs.com/compatible-mode/v1 (Singapore) · Models: qwen-max / qwen-vl-max
+              </p>
+            )}
             <div className={styles.keyInput}>
               <input className={styles.input} type="password" placeholder={`Nhập ${p.toUpperCase()}_API_KEY mới...`} value={keyInputs[p]} onChange={e => setKeyInputs(k => ({ ...k, [p]: e.target.value }))} />
               <button className={styles.saveBtn} onClick={() => saveKey(p)} disabled={saving === p}>

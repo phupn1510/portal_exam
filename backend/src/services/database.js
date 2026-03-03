@@ -23,6 +23,7 @@ export async function initDatabase() {
     // Migrate existing tables (ALTER TABLE is idempotent with IF NOT EXISTS)
     await client.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
     await client.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)`);
+    await client.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS grade VARCHAR(5) DEFAULT '2'`);
     // Create indexes only after columns are guaranteed to exist
     try { await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_hash ON exams(file_hash)`); } catch (_) {}
     try { await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_tags ON exams USING GIN(tags)`); } catch (_) {}
@@ -46,16 +47,16 @@ export async function checkExamByHash(fileHash) {
   return result.rows[0] || null;
 }
 
-export async function saveExam(title, subject, questions, userEmail = null, fileHash = null, tags = []) {
+export async function saveExam(title, subject, questions, userEmail = null, fileHash = null, tags = [], grade = '2') {
   const result = await pool.query(
-    'INSERT INTO exams (title, subject, questions, user_email, file_hash, tags) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-    [title, subject, JSON.stringify(questions), userEmail, fileHash, tags]
+    'INSERT INTO exams (title, subject, questions, user_email, file_hash, tags, grade) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+    [title, subject, JSON.stringify(questions), userEmail, fileHash, tags, grade]
   );
   return result.rows[0].id;
 }
 
 export async function getExams() {
-  const result = await pool.query('SELECT id, title, subject, created_at FROM exams ORDER BY created_at DESC');
+  const result = await pool.query('SELECT id, title, subject, grade, tags, created_at FROM exams ORDER BY created_at DESC');
   return result.rows;
 }
 

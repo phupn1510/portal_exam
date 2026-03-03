@@ -13,6 +13,7 @@ function HomeContent() {
   const [quizzes, setQuizzes] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState("all");
+  const [selectedGrade, setSelectedGrade] = useState("all");
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [user, setUser] = useState(null);
@@ -176,7 +177,9 @@ function HomeContent() {
     if (e.dataTransfer.files?.[0]) handleFileUpload(e.dataTransfer.files[0]);
   };
 
-  const filteredQuizzes = selectedSubject === "all" ? quizzes : quizzes.filter(q => q.subject === selectedSubject);
+  const filteredQuizzes = quizzes
+    .filter(q => selectedSubject === "all" || q.subject === selectedSubject)
+    .filter(q => selectedGrade === "all" || q.grade === selectedGrade);
 
   if (loading) return <div className={styles.container}><div className={styles.loading}>Đang tải...</div></div>;
 
@@ -279,11 +282,19 @@ function HomeContent() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Subject Filters */}
       <section className={styles.filters}>
-        <button className={`${styles.filterBtn} ${selectedSubject === "all" ? styles.active : ""}`} onClick={() => setSelectedSubject("all")}>📚 Tất cả</button>
+        <button className={`${styles.filterBtn} ${selectedSubject === "all" ? styles.active : ""}`} onClick={() => setSelectedSubject("all")}>📚 Tất cả môn</button>
         {subjects.map(s => (
           <button key={s.id} className={`${styles.filterBtn} ${selectedSubject === s.id ? styles.active : ""}`} onClick={() => setSelectedSubject(s.id)}>{s.icon} {s.name}</button>
+        ))}
+      </section>
+
+      {/* Grade Filters */}
+      <section className={styles.gradeFilters}>
+        <button className={`${styles.gradeBtn} ${selectedGrade === "all" ? styles.gradeActive : ""}`} onClick={() => setSelectedGrade("all")}>Tất cả lớp</button>
+        {[1,2,3,4,5,6,7,8,9,10,11,12].map(g => (
+          <button key={g} className={`${styles.gradeBtn} ${selectedGrade === String(g) ? styles.gradeActive : ""}`} onClick={() => setSelectedGrade(String(g))}>Lớp {g}</button>
         ))}
       </section>
 
@@ -304,7 +315,10 @@ function HomeContent() {
                       {quiz.tags.map(t => <span key={t} className={styles.tag}>{t}</span>)}
                     </div>
                   )}
-                  <span className={styles.date}>{new Date(quiz.uploadedAt).toLocaleDateString("vi-VN")}</span>
+                  <div className={styles.metaRow}>
+                    <span className={styles.gradePill}>Lớp {quiz.grade || '?'}</span>
+                    <span className={styles.date}>{new Date(quiz.uploadedAt).toLocaleDateString("vi-VN")}</span>
+                  </div>
                 </div>
                 <div className={styles.startBtn}>Làm bài →</div>
               </Link>
