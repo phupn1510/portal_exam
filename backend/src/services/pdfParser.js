@@ -44,15 +44,12 @@ class PDFParser {
                 questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress);
             } else {
                 // Image-based PDF (scanned) → Vision OCR
-                console.log('Strategy: AI Vision OCR (scanned PDF detected)');
-                onProgress?.({ progress: 5, total: 100, message: '🖼️ PDF dạng ảnh — đang chuyển đổi sang hình ảnh...' });
+                const provider = await aiService.resolveOcrProvider();
+                console.log(`Strategy: AI Vision OCR (scanned PDF) [provider=${provider}]`);
+                onProgress?.({ progress: 5, total: 100, message: `🖼️ PDF dạng ảnh — đang chuyển đổi (${provider})...` });
                 questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress);
-            } else {
-                // Fallback: basic regex (no OpenAI key)
-                console.log('Strategy: Regex fallback (no OpenAI key configured)');
-                onProgress?.({ progress: 50, total: 100, message: '📝 Đang trích xuất câu hỏi...' });
-                questions = this.parseQuestionsFromText(fullText);
             }
+
 
             console.log(`✅ Parsed ${questions.length} questions`);
             onProgress?.({ progress: 100, total: 100, message: `✅ Hoàn thành! Tìm thấy ${questions.length} câu hỏi`, questionCount: questions.length });
