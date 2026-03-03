@@ -185,25 +185,6 @@ FORMAT OUTPUT:
                 messages: [
                     {
                         role: 'system',
-                        content: `Bạn là một hệ thống OCR chuyên xử lý tài liệu giáo dục tiếng Việt. Hãy đọc và trích xuất TOÀN BỘ nội dung từ file PDF đề thi/đáp án sau đây.
-
-YÊU CẦU:
-1. Trích xuất theo từng ĐỀ SỐ (Đề số 1, Đề số 2, ...) riêng biệt.
-2. Với mỗi đề, liệt kê từng câu hỏi theo format:
-   
-   **ĐỀ SỐ [X]**
-   Câu [số] . Đáp án: [nội dung đáp án]
-   [Phần giải thích/hướng dẫn nếu có]
-
-3. Giữ nguyên:
-   - Tất cả phép tính toán học (ví dụ: 6−1=5, 9−3=6)
-   - Dấu tiếng Việt (ă, â, ê, ô, ơ, ư, đ và các dấu thanh)
-   - Các ký hiệu toán học (<, >, =, +, −)
-   - Số La Mã, số thường
-   - Tên riêng (bạn Hùng, bạn Mai, bạn Hà...)
-
-4. BỎ QUA:
-   - Header/footer quảng cáo (số điện thoại, thông tin liên hệ, 
                         content: `Bạn là hệ thống OCR chuyên xử lý đề thi giáo dục tiếng Việt.
 
 NHIỆM VỤ: Đọc nội dung text đề thi/đáp án và trả về JSON array.
@@ -338,6 +319,7 @@ Nếu không có giải thích, để "giai_thich": "".`
         this._log('❌👁️', p, vision, Date.now() - start, err.message);
         return [];
     }
+   }
 
     /**
      * Robustly extract JSON array from AI response.
