@@ -338,56 +338,44 @@ Nếu không có giải thích, để "giai_thich": "".`
         this._log('❌👁️', p, vision, Date.now() - start, err.message);
         return [];
     }
-}
 
-/**
- * Robustly extract JSON array from AI response
- * Handles: raw JSON, markdown-wrapped JSON, and text with embedded JSON
- */
-_extractJsonArray(content) {
-    // 1. Strip markdown code fences if present
-    let cleaned = content
-        .replace(/^```(?:json)?\s*\n?/i, '')
-        .replace(/\n?```\s*$/i, '')
-        .trim();
+    /**
+     * Robustly extract JSON array from AI response.
+     * Handles: raw JSON, markdown-wrapped JSON, text with embedded JSON, truncated JSON.
+     */
+    _extractJsonArray(content) {
+        let cleaned = content
+            .replace(/^```(?:json)?\s*\n?/i, '')
+            .replace(/\n?```\s*$/i, '')
+            .trim();
 
-    // 2. Try direct parse
-    try {
-        const parsed = JSON.parse(cleaned);
-        return Array.isArray(parsed) ? parsed : [parsed];
-    } catch (e) { /* continue */ }
-
-    // 3. Try to find JSON array in the text
-    const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (match) {
+        // 1. Direct parse
         try {
-            return JSON.parse(match[0]);
+            const parsed = JSON.parse(cleaned);
+            return Array.isArray(parsed) ? parsed : [parsed];
         } catch (e) { /* continue */ }
-    }
 
-    // 4. Try to fix truncated JSON (missing closing brackets)
-    let fixAttempt = cleaned;
-    if (!fixAttempt.endsWith(']')) {
-        // Find last complete object (ending with })
-        const lastBrace = fixAttempt.lastIndexOf('}');
-        if (lastBrace > 0) {
-            fixAttempt = fixAttempt.substring(0, lastBrace + 1);
-            // Close any open arrays
-            const openBrackets = (fixAttempt.match(/\[/g) || []).length;
-            const closeBrackets = (fixAttempt.match(/\]/g) || []).length;
-            for (let i = 0; i < openBrackets - closeBrackets; i++) {
-                fixAttempt += ']';
-            }
-            try {
-                return JSON.parse(fixAttempt);
-            } catch (e) { /* continue */ }
+        // 2. Find JSON array in text
+        const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (match) {
+            try { return JSON.parse(match[0]); } catch (e) { /* continue */ }
         }
-    }
 
-    // 5. Fallback: return empty
-    console.warn('⚠️ Could not parse JSON from OCR response');
-    return [];
-}
+        // 3. Try to fix truncated JSON
+        if (!cleaned.endsWith(']')) {
+            const lastBrace = cleaned.lastIndexOf('}');
+            if (lastBrace > 0) {
+                let fixed = cleaned.substring(0, lastBrace + 1);
+                const open = (fixed.match(/\[/g) || []).length;
+                const close = (fixed.match(/\]/g) || []).length;
+                for (let i = 0; i < open - close; i++) fixed += ']';
+                try { return JSON.parse(fixed); } catch (e) { /* continue */ }
+            }
+        }
+
+        console.warn('⚠️ Could not parse JSON from OCR response');
+        return [];
+    }
 
     // ─── Explain answer ───────────────────────────────────────────────────────
 
