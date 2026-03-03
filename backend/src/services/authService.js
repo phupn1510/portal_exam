@@ -2,12 +2,12 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import session from 'express-session';
+import { getAdminEmails } from './database.js';
 
 // In-memory user store (used as cache; session holds the full user for persistence across restarts)
 const users = new Map();
 
-// Admin emails - can be configured via environment
-const adminEmails = (process.env.ADMIN_EMAILS || 'phupn1510@gmail.com').split(',').map(e => e.trim().toLowerCase());
+const OWNER_EMAIL = 'phupn1510@gmail.com';
 
 export function configurePassport() {
     // Configure Google OAuth
@@ -16,9 +16,19 @@ export function configurePassport() {
             clientID: process.env.GOOGLE_CLIENT_ID,
             clientSecret: process.env.GOOGLE_CLIENT_SECRET,
             callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback'
-        }, (accessToken, refreshToken, profile, done) => {
+        }, async (accessToken, refreshToken, profile, done) => {
             try {
                 const email = profile.emails?.[0]?.value?.toLowerCase();
+
+                // Load admin list from DB (fallback to env)
+                let adminEmails = [OWNER_EMAIL];
+                try {
+                    adminEmails = await getAdminEmails();
+                } catch {
+                    const envEmails = (process.env.ADMIN_EMAILS || OWNER_EMAIL).split(',').map(e => e.trim().toLowerCase());
+                    adminEmails = [OWNER_EMAIL, ...envEmails.filter(e => e !== OWNER_EMAIL)];
+                }
+
                 const user = {
                     id: profile.id,
                     name: profile.displayName,
