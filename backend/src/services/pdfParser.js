@@ -15,6 +15,53 @@ class PDFParser {
         this.imagesDir = './uploads/images';
     }
 
+    /**
+     * Pre-clean extracted PDF text: remove watermarks, ads, broken vertical text,
+     * phone numbers, and other noise common in Vietnamese exam PDFs.
+     */
+    _cleanExtractedText(text) {
+        return text
+            // Remove common ad/watermark lines
+            .replace(/Liên hệ.*?(?:zalo|0\d{9}).*$/gm, '')
+            .replace(/Tài liệu ôn thi.*$/gm, '')
+            .replace(/CẬP NHẬT TÀI LIỆU.*$/gm, '')
+            .replace(/Quét QR.*$/gm, '')
+            .replace(/Team Cô Hoa.*$/gm, '')
+            .replace(/Nam Thắng.*$/gm, '')
+            .replace(/Kính gửi Quý phụ huynh.*?Trân trọng!/gs, '')
+            .replace(/0\d{9}[-.]?.*$/gm, '')
+            .replace(/100%\s*free/gi, '')
+            // Remove broken vertical watermark fragments (1-4 char lines)
+            .replace(/^[a-zA-ZàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđĐ]{1,4}$/gm, '')
+            // Remove lines that are just dashes, equals, or whitespace
+            .replace(/^[=\-_\s]+$/gm, '')
+            // Collapse multiple blank lines
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    /**
+     * Smart chunking: split text by ĐỀ SỐ boundaries when possible,
+     * keeping each chunk under maxChunkSize. Never splits a question in half.
+     */
+    _smartChunk(text, maxChunkSize = 6000) {
+        const deParts = text.split(/(?=ĐỀ SỐ\s+\d+)/);
+        const chunks = [];
+        let current = '';
+
+        for (const part of deParts) {
+            if (current.length + part.length > maxChunkSize && current.length > 0) {
+                chunks.push(current.trim());
+                current = part;
+            } else {
+                current += part;
+            }
+        }
+        if (current.trim()) chunks.push(current.trim());
+
+        return chunks.length > 0 ? chunks : [text];
+    }
+
     async parsePDF(filePath, fileId, onProgress = null) {
         try {
             const fileImagesDir = path.join(this.imagesDir, fileId);
@@ -70,26 +117,30 @@ class PDFParser {
     // ─── AI Text Parsing ──────────────────────────────────────────────────────
 
     async parseWithAIText(text, numPages, onProgress) {
-        const chunkSize = 3000;
-        const chunks = [];
-        for (let i = 0; i < text.length; i += chunkSize) {
-            chunks.push(text.slice(i, i + chunkSize));
-        }
+        // Pre-clean text to remove watermarks, ads, noise
+        const cleaned = this._cleanExtractedText(text);
+        console.log(`Text after cleaning: ${cleaned.length} chars (was ${text.length})`);
+
+        // Smart chunking by ĐỀ SỐ boundaries
+        const chunks = this._smartChunk(cleaned);
+        console.log(`Split into ${chunks.length} chunks`);
 
         const allQuestions = [];
 
         for (let i = 0; i < chunks.length; i++) {
             const pct = Math.round(10 + ((i + 1) / chunks.length) * 85);
             onProgress?.({ progress: pct, total: 100, message: `🤖 Phân tích đoạn văn bản ${i + 1}/${chunks.length}...` });
-            console.log(`  Parsing text chunk ${i + 1}/${chunks.length}...`);
+            console.log(`  Parsing text chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)...`);
             const questions = await this.extractQuestionsFromText(chunks[i]);
             allQuestions.push(...questions);
         }
 
+        // Deduplicate by (deNumber, number) combo
         const seen = new Set();
         return allQuestions.filter(q => {
-            if (seen.has(q.number)) return false;
-            seen.add(q.number);
+            const key = `${q.deNumber || 0}-${q.number}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
             return true;
         });
     }
@@ -202,12 +253,12 @@ class PDFParser {
                 id: uuidv4(),
                 number: q.cau ?? (i + 1),
                 deNumber: q.de_so ?? 1,
-                text: q.dap_an || '',
+                text: q.giai_thich || q.dap_an || '',
                 explanation: q.giai_thich || '',
                 options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
                 correctAnswer: q.correct || q.dap_an || null,
                 type: q.type || 'reading',
-                interactive: q.interactive !== false, // true unless explicitly false
+                interactive: q.interactive !== false,
                 imageUrl: null
             }));
         }
@@ -223,12 +274,12 @@ class PDFParser {
                         id: uuidv4(),
                         number: q.cau ?? globalIndex,
                         deNumber: deNum,
-                        text: q.dap_an || '',
+                        text: q.giai_thich || q.dap_an || '',
                         explanation: q.giai_thich || '',
                         options: [],
                         correctAnswer: q.dap_an || null,
                         type: 'reading',
-                        interactive: false, // unknown until analyzed
+                        interactive: false,
                         imageUrl: null
                     });
                     globalIndex++;

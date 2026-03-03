@@ -1,7 +1,7 @@
 // AI Service - Multi-provider AI for explanations + OCR
 // Providers: openai | kimi | gemini | alibaba
 import OpenAI from 'openai';
-import { getApiKey } from './database.js';
+import { getApiKey, getSetting } from './database.js';
 
 class AIService {
     constructor() {
@@ -179,21 +179,28 @@ FORMAT OUTPUT:
         const start = Date.now();
         this._log('📡', p, model, null);
 
-        try {
-            const response = await client.chat.completions.create({
-                model,
-                messages: [
-                    {
-                        role: 'system',
-                        content: `Bạn là hệ thống OCR chuyên xử lý đề thi giáo dục tiếng Việt.
+        // Load custom prompt from DB, fallback to default
+        let customPrompt = null;
+        try { customPrompt = await getSetting('ocr_text_prompt'); } catch { /* ignore */ }
 
-NHIỆM VỤ: Đọc nội dung text đề thi/đáp án và trả về JSON array.
+        const systemPrompt = customPrompt || `Bạn là hệ thống trích xuất đề thi/đáp án giáo dục Việt Nam.
 
-BỎ QUA: Quảng cáo, watermark, header/footer (số điện thoại, "Team Cô Hoa", "Nam Thắng", zalo, khóa học...), số trang.
+NHIỆM VỤ: Đọc nội dung text và trích xuất TỪNG CÂU HỎI theo cấu trúc JSON.
 
-GIỮ NGUYÊN: Phép tính (6−1=5), dấu tiếng Việt, ký hiệu toán (<, >, =), tên riêng, tiếng Anh.
+CÁCH NHẬN DIỆN:
+- Mỗi đề bắt đầu bằng "ĐỀ SỐ X"
+- Mỗi câu bắt đầu bằng "Câu X" hoặc "Câu X .Đáp án"
+- Sau "Đáp án" là phần giải thích, có thể nhiều dòng cho đến câu tiếp theo
+- Đáp án ngắn gọn (số, từ, Đúng/Sai, A/B/C/D) thường nằm ở cuối phần giải thích
 
-BẮT BUỘC: Chỉ trả về JSON array, KHÔNG markdown, KHÔNG giải thích, KHÔNG text ngoài JSON.
+CÁCH TRÍCH XUẤT:
+1. "dap_an": Chỉ ghi đáp án cuối cùng, ngắn gọn nhất (VD: "8", "Đúng", "Sai", "Quả cam", "A", "5")
+2. "giai_thich": Ghi TOÀN BỘ nội dung giải thích/hướng dẫn của câu đó (bao gồm phép tính, lập luận, kết luận)
+
+BỎ QUA: Quảng cáo, watermark, header/footer, số điện thoại, thông tin liên hệ, số trang.
+GIỮ NGUYÊN: Phép tính (6−1=5), dấu tiếng Việt, ký hiệu toán, tên riêng, tiếng Anh.
+
+BẮT BUỘC: Chỉ trả về JSON array, KHÔNG markdown, KHÔNG text ngoài JSON.
 
 FORMAT:
 [
@@ -203,22 +210,30 @@ FORMAT:
       {
         "cau": 1,
         "dap_an": "Đúng",
-        "giai_thich": "Từ 6 đếm lùi 1 bước. 6−1=5. Bạn Hùng minh họa đúng."
+        "giai_thich": "Từ 6 đếm lùi 1 bước. Vậy 6−1=5. Do đó, bạn Hùng minh họa đúng."
+      },
+      {
+        "cau": 5,
+        "dap_an": "8",
+        "giai_thich": "Từ 9 đếm lùi 1 bước. Vậy 9−1=8. Số cần điền vào dấu hỏi chấm là 8."
+      },
+      {
+        "cau": 16,
+        "dap_an": "Quả cam",
+        "giai_thich": "Quả cam"
       }
     ]
-  },
-  {
-    "de_so": 2,
-    "questions": [...]
   }
-]
+]`;
 
-Quy tắc cho "dap_an": Chỉ ghi đáp án ngắn gọn (số, từ, Đúng/Sai, chữ cái A/B/C/D...).
-Quy tắc cho "giai_thich": Ghi toàn bộ phần giải thích/hướng dẫn. Nếu không có, để "".`
-                    },
-                    { role: 'user', content: `Trích xuất câu hỏi và đáp án từ:\n\n${text}` }
+        try {
+            const response = await client.chat.completions.create({
+                model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: `Trích xuất tất cả câu hỏi và đáp án từ nội dung sau:\n\n${text}` }
                 ],
-                max_tokens: 4000,
+                max_tokens: 8000,
                 temperature: 0
             });
 
@@ -259,16 +274,23 @@ Quy tắc cho "giai_thich": Ghi toàn bộ phần giải thích/hướng dẫn. 
             messages: [
                 {
                     role: 'system',
-                    content: `Bạn là hệ thống OCR chuyên xử lý đề thi giáo dục tiếng Việt.
+                    content: `Bạn là hệ thống trích xuất đề thi/đáp án giáo dục Việt Nam từ ảnh.
 
-NHIỆM VỤ: Đọc ảnh đề thi/đáp án và trả về JSON array.
+NHIỆM VỤ: Đọc ảnh đề thi/đáp án và trích xuất TỪNG CÂU HỎI theo cấu trúc JSON.
 
-BỎ QUA: Quảng cáo, watermark, header/footer (số điện thoại, "Team Cô Hoa", "Nam Thắng", zalo, khóa học...), số trang.
+CÁCH NHẬN DIỆN:
+- Mỗi đề bắt đầu bằng "ĐỀ SỐ X"
+- Mỗi câu bắt đầu bằng "Câu X" hoặc "Câu X .Đáp án"
+- Đáp án ngắn gọn (số, từ, Đúng/Sai, A/B/C/D) thường ở cuối phần giải thích
 
-GIỮ NGUYÊN: Phép tính (6−1=5), dấu tiếng Việt, ký hiệu toán (<, >, =), tên riêng, tiếng Anh.
-Nếu có hình không đọc được, ghi "[Hình minh họa]".
+CÁCH TRÍCH XUẤT:
+1. "dap_an": Chỉ ghi đáp án cuối cùng, ngắn gọn nhất (VD: "8", "Đúng", "Sai", "Quả cam", "A")
+2. "giai_thich": Ghi TOÀN BỘ nội dung giải thích/hướng dẫn (bao gồm phép tính, lập luận, kết luận)
+Nếu có hình không đọc được, ghi "[Hình minh họa]" trong giai_thich.
 
-BẮT BUỘC: Chỉ trả về JSON array, KHÔNG markdown, KHÔNG giải thích, KHÔNG text ngoài JSON.
+BỎ QUA: Quảng cáo, watermark, header/footer, số điện thoại, thông tin liên hệ.
+GIỮ NGUYÊN: Phép tính (6−1=5), dấu tiếng Việt, ký hiệu toán, tên riêng.
+BẮT BUỘC: Chỉ trả về JSON array, KHÔNG markdown, KHÔNG text ngoài JSON.
 
 FORMAT:
 [
@@ -278,24 +300,16 @@ FORMAT:
       {
         "cau": 1,
         "dap_an": "Đúng",
-        "giai_thich": "Từ 6 đếm lùi 1 bước. 6−1=5. Bạn Hùng minh họa đúng."
+        "giai_thich": "Từ 6 đếm lùi 1 bước. Vậy 6−1=5. Do đó, bạn Hùng minh họa đúng."
       },
       {
-        "cau": 2,
-        "dap_an": "Sai",
-        "giai_thich": "Từ 6 đếm lùi 1 bước. 6−1=5. Bạn Mai minh họa sai."
+        "cau": 5,
+        "dap_an": "8",
+        "giai_thich": "Từ 9 đếm lùi 1 bước. Vậy 9−1=8. Số cần điền vào dấu hỏi chấm là 8."
       }
     ]
-  },
-  {
-    "de_so": 2,
-    "questions": [...]
   }
-]
-
-Quy tắc cho "dap_an": Chỉ ghi đáp án ngắn gọn cuối cùng (số, từ, Đúng/Sai, tên bạn...).
-Quy tắc cho "giai_thich": Ghi toàn bộ phần giải thích/hướng dẫn.
-Nếu không có giải thích, để "giai_thich": "".`
+]`
                 },
                 {
                     role: 'user',
@@ -305,7 +319,7 @@ Nếu không có giải thích, để "giai_thich": "".`
                     ]
                 }
             ],
-            max_tokens: 4000,
+            max_tokens: 8000,
             temperature: 0
         });
 

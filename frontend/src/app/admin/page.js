@@ -59,6 +59,7 @@ export default function AdminPage() {
   const [providers, setProviders] = useState({ ocr: 'auto', analyze: 'auto', answer: 'auto' });
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState('');
+  const [ocrPrompt, setOcrPrompt] = useState('');
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -72,6 +73,7 @@ export default function AdminPage() {
       const { data } = await axios.get(`${API_URL}/admin/settings`, { withCredentials: true });
       setSettings(data);
       setProviders({ ocr: data.ocrProvider || 'auto', analyze: data.analyzeProvider || 'auto', answer: data.answerProvider || 'auto' });
+      setOcrPrompt(data.ocrTextPrompt || '');
     } catch (err) {
       if (err.response?.status === 403) showToast('Chỉ owner mới truy cập được trang này', 'error');
     } finally { setLoading(false); }
@@ -105,6 +107,15 @@ export default function AdminPage() {
       setKeyInputs(k => ({ ...k, [provider]: '' }));
       showToast(`✅ Đã lưu API key cho ${PROVIDER_LABELS[provider]}`);
       fetchSettings();
+    } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
+    finally { setSaving(''); }
+  };
+
+  const saveOcrPrompt = async () => {
+    setSaving('ocrPrompt');
+    try {
+      await axios.post(`${API_URL}/admin/ocr-prompt`, { prompt: ocrPrompt }, { withCredentials: true });
+      showToast(ocrPrompt.trim() ? '✅ Đã lưu prompt tùy chỉnh' : '✅ Đã reset về prompt mặc định');
     } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
     finally { setSaving(''); }
   };
@@ -156,6 +167,30 @@ export default function AdminPage() {
         <button className={styles.saveBtn} onClick={() => saveProviderSetting('ocr', providers.ocr)} disabled={saving === 'ocr'}>
           {saving === 'ocr' ? '...' : '💾 Lưu OCR Provider'}
         </button>
+      </section>
+
+      {/* OCR Prompt Template */}
+      <section className={styles.card}>
+        <h2>📝 Prompt OCR tùy chỉnh</h2>
+        <p className={styles.hint}>
+          Tùy chỉnh prompt gửi đến AI khi trích xuất đề thi từ PDF.
+          Để trống để dùng prompt mặc định. Prompt phải yêu cầu AI trả về JSON array với format: {`[{"de_so":1,"questions":[{"cau":1,"dap_an":"...","giai_thich":"..."}]}]`}
+        </p>
+        <textarea
+          className={styles.input}
+          style={{ width: '100%', minHeight: 200, fontFamily: 'monospace', fontSize: 13, resize: 'vertical' }}
+          placeholder="Để trống = dùng prompt mặc định..."
+          value={ocrPrompt}
+          onChange={e => setOcrPrompt(e.target.value)}
+        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <button className={styles.saveBtn} onClick={saveOcrPrompt} disabled={saving === 'ocrPrompt'}>
+            {saving === 'ocrPrompt' ? '...' : '💾 Lưu Prompt'}
+          </button>
+          <button className={styles.saveBtn} style={{ background: '#999' }} onClick={() => { setOcrPrompt(''); }} disabled={saving === 'ocrPrompt'}>
+            Reset mặc định
+          </button>
+        </div>
       </section>
 
       {/* Analyze Provider */}

@@ -47,7 +47,13 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         }
     }
 
-    console.log(`Processing PDF: ${req.file.originalname} (${fileId}) hash=${fileHash.slice(0,12)}...`);
+    // Decode Vietnamese filename (multer encodes as latin1)
+    let originalName = req.file.originalname;
+    try {
+        originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    } catch { /* keep original if decode fails */ }
+
+    console.log(`Processing PDF: ${originalName} (${fileId}) hash=${fileHash.slice(0,12)}...`);
 
     createJob(jobId);
     res.json({ success: true, jobId, status: 'processing' });
@@ -66,19 +72,19 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
 
             // Determine subject from filename
             let quizSubject = subject || 'other';
-            const filenameLower = req.file.originalname.toLowerCase();
+            const filenameLower = originalName.toLowerCase();
             if (filenameLower.includes('english') || filenameLower.includes('ioe') || filenameLower.includes('anh')) {
                 quizSubject = 'english';
             } else if (filenameLower.includes('vietnam') || filenameLower.includes('việt') || filenameLower.includes('tiếng')) {
                 quizSubject = 'vietnamese';
-            } else if (filenameLower.includes('math') || filenameLower.includes('toán')) {
+            } else if (filenameLower.includes('math') || filenameLower.includes('toán') || filenameLower.includes('vioedu')) {
                 quizSubject = 'math';
             }
 
             const quiz = {
                 id: fileId,
-                filename: req.file.originalname,
-                title: title || req.file.originalname.replace('.pdf', ''),
+                filename: originalName,
+                title: title || originalName.replace('.pdf', ''),
                 subject: quizSubject,
                 grade: grade || '2',
                 uploadedBy: req.user.email,

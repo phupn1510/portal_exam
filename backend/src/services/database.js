@@ -78,7 +78,6 @@ async function getSetting(key) {
 
 export { getSetting };
 
-
 async function setSetting(key, value) {
   await pool.query(
     `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
@@ -86,6 +85,8 @@ async function setSetting(key, value) {
     [key, value]
   );
 }
+
+export { setSetting };
 
 // ─── Admin Emails ─────────────────────────────────────────────────────────────
 
