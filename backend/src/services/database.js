@@ -1,9 +1,9 @@
 import pkg from 'pg';
 const { Pool } = pkg;
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+const OWNER_EMAIL = 'phupn1510@gmail.com'; // permanent super-admin, cannot be removed
 
 export async function initDatabase() {
   const client = await pool.connect();
@@ -14,8 +14,24 @@ export async function initDatabase() {
         title VARCHAR(255) NOT NULL,
         subject VARCHAR(100),
         questions JSONB NOT NULL,
+        tags TEXT[] DEFAULT '{}',
+        file_hash VARCHAR(64),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         user_email VARCHAR(255)
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_hash ON exams(file_hash)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_tags ON exams USING GIN(tags)`);
+    // Migrate existing tables that may be missing new columns
+    await client.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
+    await client.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_hash ON exams(file_hash)`).catch(() => {});
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_tags ON exams USING GIN(tags)`).catch(() => {});
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key VARCHAR(100) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log('Database tables initialized');
@@ -24,10 +40,17 @@ export async function initDatabase() {
   }
 }
 
-export async function saveExam(title, subject, questions, userEmail = null) {
+// ─── Exams ────────────────────────────────────────────────────────────────────
+
+export async function checkExamByHash(fileHash) {
+  const result = await pool.query('SELECT id, title FROM exams WHERE file_hash = $1 LIMIT 1', [fileHash]);
+  return result.rows[0] || null;
+}
+
+export async function saveExam(title, subject, questions, userEmail = null, fileHash = null, tags = []) {
   const result = await pool.query(
-    'INSERT INTO exams (title, subject, questions, user_email) VALUES ($1, $2, $3, $4) RETURNING id',
-    [title, subject, JSON.stringify(questions), userEmail]
+    'INSERT INTO exams (title, subject, questions, user_email, file_hash, tags) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+    [title, subject, JSON.stringify(questions), userEmail, fileHash, tags]
   );
   return result.rows[0].id;
 }
@@ -44,4 +67,65 @@ export async function getExamById(id) {
 
 export async function deleteExam(id) {
   await pool.query('DELETE FROM exams WHERE id = $1', [id]);
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+async function getSetting(key) {
+  const result = await pool.query('SELECT value FROM app_settings WHERE key = $1', [key]);
+  return result.rows[0]?.value ?? null;
+}
+
+async function setSetting(key, value) {
+  await pool.query(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()`,
+    [key, value]
+  );
+}
+
+// ─── Admin Emails ─────────────────────────────────────────────────────────────
+
+export async function getAdminEmails() {
+  try {
+    const raw = await getSetting('admin_emails');
+    const dbEmails = raw ? JSON.parse(raw) : [];
+    // Always include owner
+    const all = [OWNER_EMAIL, ...dbEmails.filter(e => e !== OWNER_EMAIL)];
+    return all;
+  } catch {
+    return [OWNER_EMAIL];
+  }
+}
+
+export async function addAdminEmail(email) {
+  const normalized = email.trim().toLowerCase();
+  if (normalized === OWNER_EMAIL) return; // already exists
+  const emails = await getAdminEmails();
+  if (!emails.includes(normalized)) {
+    const updatable = emails.filter(e => e !== OWNER_EMAIL);
+    await setSetting('admin_emails', JSON.stringify([...updatable, normalized]));
+  }
+}
+
+export async function removeAdminEmail(email) {
+  const normalized = email.trim().toLowerCase();
+  if (normalized === OWNER_EMAIL) throw new Error('Cannot remove the owner account');
+  const emails = await getAdminEmails();
+  const updatable = emails.filter(e => e !== OWNER_EMAIL && e !== normalized);
+  await setSetting('admin_emails', JSON.stringify(updatable));
+}
+
+// ─── API Keys ─────────────────────────────────────────────────────────────────
+
+export async function getApiKey(provider) {
+  // DB overrides env
+  const fromDb = await getSetting(`api_key_${provider}`);
+  if (fromDb) return fromDb;
+  const envMap = { openai: 'OPENAI_API_KEY', kimi: 'KIMI_API_KEY', gemini: 'GEMINI_API_KEY' };
+  return process.env[envMap[provider]] || null;
+}
+
+export async function setApiKey(provider, key) {
+  await setSetting(`api_key_${provider}`, key);
 }
