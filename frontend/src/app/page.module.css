@@ -34,7 +34,7 @@
 
 .loginBtn {
   background: white;
-  color: #2C3E50;
+  color: #2c3e50;
   border: none;
   padding: 12px 24px;
   border-radius: 12px;
@@ -45,7 +45,7 @@
 
 .loginBtn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 .userInfo {
@@ -71,12 +71,12 @@
 
 .userName {
   font-weight: 600;
-  color: #2C3E50;
+  color: #2c3e50;
   font-size: 0.9rem;
 }
 
 .adminBadge {
-  background: #FF6B6B;
+  background: #ff6b6b;
   color: white;
   font-size: 0.7rem;
   padding: 2px 8px;
@@ -114,7 +114,7 @@
 
 .uploadZone:hover,
 .uploadZone.active {
-  border-color: #4ECDC4;
+  border-color: #4ecdc4;
   background: #f8fdfd;
   transform: scale(1.02);
 }
@@ -125,7 +125,7 @@
 }
 
 .uploadZone h3 {
-  color: #2C3E50;
+  color: #2c3e50;
   font-size: 1.2rem;
   margin-bottom: 8px;
 }
@@ -141,7 +141,8 @@
   margin-top: 16px;
 }
 
-.input, .select {
+.input,
+.select {
   padding: 12px 16px;
   border: 2px solid #ddd;
   border-radius: 10px;
@@ -158,9 +159,10 @@
   cursor: pointer;
 }
 
-.input:focus, .select:focus {
+.input:focus,
+.select:focus {
   outline: none;
-  border-color: #4ECDC4;
+  border-color: #4ecdc4;
 }
 
 .filters {
@@ -171,7 +173,7 @@
 }
 
 .filterBtn {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
   border: 2px solid transparent;
   color: white;
   padding: 10px 20px;
@@ -182,27 +184,31 @@
 }
 
 .filterBtn:hover {
-  background: rgba(255,255,255,0.3);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .filterBtn.active {
   background: white;
-  color: #2C3E50;
+  color: #2c3e50;
 }
 
 .spinner {
   width: 50px;
   height: 50px;
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #4ECDC4;
+  border-top: 4px solid #4ecdc4;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .quizList h2 {
@@ -226,12 +232,12 @@
   gap: 16px;
   text-decoration: none;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .quizCard:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 }
 
 .quizIcon {
@@ -251,7 +257,7 @@
 }
 
 .quizInfo h3 {
-  color: #2C3E50;
+  color: #2c3e50;
   font-size: 1rem;
   margin-bottom: 4px;
   white-space: nowrap;
@@ -260,7 +266,7 @@
 }
 
 .quizInfo p {
-  color: #4ECDC4;
+  color: #4ecdc4;
   font-weight: 600;
   font-size: 0.85rem;
   margin-bottom: 2px;
@@ -272,7 +278,7 @@
 }
 
 .startBtn {
-  background: linear-gradient(135deg, #4ECDC4 0%, #6EE7DE 100%);
+  background: linear-gradient(135deg, #4ecdc4 0%, #6ee7de 100%);
   color: white;
   padding: 10px 16px;
   border-radius: 10px;
@@ -284,7 +290,7 @@
 .empty {
   text-align: center;
   padding: 40px;
-  background: rgba(255,255,255,0.1);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   color: white;
 }
@@ -300,26 +306,132 @@
   .header h1 {
     font-size: 1.8rem;
   }
-  
+
   .headerTop {
     flex-direction: column;
   }
-  
+
   .grid {
     grid-template-columns: 1fr;
   }
-  
+
   .filters {
     overflow-x: auto;
     flex-wrap: nowrap;
     padding-bottom: 8px;
   }
-  
+
   .filterBtn {
     flex-shrink: 0;
   }
-  
+
   .uploadOptions {
     flex-direction: column;
+  }
+}
+
+/* ── Progress Bar ───────────────────────────────────────────── */
+.progressBox {
+  background: white;
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.progressMsg {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.progressPct {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #4ecdc4;
+}
+
+.progressTrack {
+  width: 100%;
+  height: 10px;
+  background: #f0f0f0;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #4ecdc4, #6ee7de, #4ecdc4);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+  transition: width 0.4s ease;
+}
+
+.progressDone {
+  background: linear-gradient(90deg, #27ae60, #2ecc71);
+  animation: none;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ── Toast Notification ─────────────────────────────────────── */
+.toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 16px 32px;
+  border-radius: 14px;
+  font-weight: 700;
+  font-size: 1rem;
+  color: white;
+  z-index: 9999;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  animation:
+    slideDown 0.35s ease,
+    fadeOut 0.4s ease 3.6s forwards;
+  white-space: nowrap;
+}
+
+.toast_success {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+}
+
+.toast_error {
+  background: linear-gradient(135deg, #e74c3c, #ff6b6b);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }

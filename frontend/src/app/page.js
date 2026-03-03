@@ -18,7 +18,14 @@ function HomeContent() {
   const [loading, setLoading] = useState(true);
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadGrade, setUploadGrade] = useState("2");
+  const [uploadJob, setUploadJob] = useState(null); // { status, progress, total, message }
+  const [toast, setToast] = useState(null); // { message, type: 'success'|'error' }
   const searchParams = useSearchParams();
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   useEffect(() => {
     // Check for auth callback
@@ -71,24 +78,49 @@ function HomeContent() {
     }
 
     setUploading(true);
+    setUploadJob({ status: 'processing', progress: 0, total: 100, message: 'Đang tải lên...' });
+
     const formData = new FormData();
     formData.append("pdf", file);
     formData.append("title", uploadTitle || file.name.replace(".pdf", ""));
     formData.append("grade", uploadGrade);
 
     try {
-      await axios.post(`${API_URL}/pdf/upload`, formData, {
+      const { data } = await axios.post(`${API_URL}/pdf/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         withCredentials: true,
       });
 
-      alert("Tải lên thành công!");
-      setUploadTitle("");
-      fetchData();
+      const { jobId } = data;
+
+      // Poll for progress every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const { data: job } = await axios.get(`${API_URL}/pdf/progress/${jobId}`, { withCredentials: true });
+          setUploadJob(job);
+
+          if (job.status === 'done') {
+            clearInterval(pollInterval);
+            setUploading(false);
+            setUploadTitle('');
+            setTimeout(() => setUploadJob(null), 3000);
+            fetchData();
+            showToast(`🎉 Tiêu xử lý thành công! Tìm thấy ${job.questionCount} câu hỏi`);
+          } else if (job.status === 'error') {
+            clearInterval(pollInterval);
+            setUploading(false);
+            setUploadJob(null);
+            showToast('Lỗi xử lý PDF: ' + job.error, 'error');
+          }
+        } catch {
+          // ignore poll errors
+        }
+      }, 2000);
+
     } catch (error) {
-      alert("Lỗi tải lên: " + (error.response?.data?.error || error.message));
-    } finally {
       setUploading(false);
+      setUploadJob(null);
+      alert('Lỗi tải lên: ' + (error.response?.data?.error || error.message));
     }
   };
 
@@ -115,6 +147,12 @@ function HomeContent() {
 
   return (
     <div className={styles.container}>
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`${styles.toast} ${styles[`toast_${toast.type}`]}`}>
+          {toast.message}
+        </div>
+      )}
       <header className={styles.header}>
         <div className={styles.headerTop}>
           <div>
@@ -151,61 +189,65 @@ function HomeContent() {
       {/* Upload Section - Admin Only */}
       {user && user.isAdmin && (
         <div className={styles.uploadSection}>
-          <div
-            className={`${styles.uploadZone} ${dragActive ? styles.active : ""}`}
-            onDrop={handleDrop}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragActive(true);
-            }}
-            onDragLeave={() => setDragActive(false)}
-            onClick={() => document.getElementById("fileInput").click()}
-          >
-            {uploading ? (
-              <div className={styles.spinner}></div>
-            ) : (
-              <>
+          {/* Progress Bar */}
+          {uploadJob && (
+            <div className={styles.progressBox}>
+              <div className={styles.progressHeader}>
+                <span className={styles.progressMsg}>{uploadJob.message}</span>
+                <span className={styles.progressPct}>
+                  {uploadJob.status === 'done' ? '✅' : `${uploadJob.progress || 0}%`}
+                </span>
+              </div>
+              <div className={styles.progressTrack}>
+                <div
+                  className={`${styles.progressFill} ${uploadJob.status === 'done' ? styles.progressDone : ''}`}
+                  style={{ width: `${uploadJob.progress || 0}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Drop zone — hidden while processing */}
+          {!uploading && (
+            <>
+              <div
+                className={`${styles.uploadZone} ${dragActive ? styles.active : ''}`}
+                onDrop={handleDrop}
+                onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+                onDragLeave={() => setDragActive(false)}
+                onClick={() => document.getElementById('fileInput').click()}
+              >
                 <div className={styles.uploadIcon}>📄</div>
                 <h3>Kéo thả file PDF vào đây</h3>
                 <p>hoặc click để chọn file</p>
-              </>
-            )}
-          </div>
-          <input
-            id="fileInput"
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => handleFileUpload(e.target.files[0])}
-            style={{ display: "none" }}
-          />
-
-          <div className={styles.uploadOptions}>
-            <input
-              type="text"
-              placeholder="Tên đề thi (tùy chọn)"
-              value={uploadTitle}
-              onChange={(e) => setUploadTitle(e.target.value)}
-              className={styles.input}
-            />
-            <select
-              value={uploadGrade}
-              onChange={(e) => setUploadGrade(e.target.value)}
-              className={styles.select}
-            >
-              <option value="1">Lớp 1</option>
-              <option value="2">Lớp 2</option>
-              <option value="3">Lớp 3</option>
-              <option value="4">Lớp 4</option>
-              <option value="5">Lớp 5</option>
-              <option value="6">Lớp 6</option>
-              <option value="7">Lớp 7</option>
-              <option value="8">Lớp 8</option>
-              <option value="9">Lớp 9</option>
-              <option value="10">Lớp 10</option>
-              <option value="11">Lớp 11</option>
-              <option value="12">Lớp 12</option>
-            </select>
-          </div>
+              </div>
+              <input
+                id="fileInput"
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => handleFileUpload(e.target.files[0])}
+                style={{ display: 'none' }}
+              />
+              <div className={styles.uploadOptions}>
+                <input
+                  type="text"
+                  placeholder="Tên đề thi (tùy chọn)"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  className={styles.input}
+                />
+                <select
+                  value={uploadGrade}
+                  onChange={(e) => setUploadGrade(e.target.value)}
+                  className={styles.select}
+                >
+                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(g => (
+                    <option key={g} value={String(g)}>Lớp {g}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
         </div>
       )}
 

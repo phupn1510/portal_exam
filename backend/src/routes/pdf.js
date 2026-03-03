@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import pdfParser from '../services/pdfParser.js';
 import { isAuthenticated, isAdmin, getCurrentUser } from '../services/authService.js';
 import { saveExam, getExams, getExamById, deleteExam } from '../services/database.js';
+import { createJob, updateJob, getJob } from '../services/jobService.js';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
@@ -18,79 +19,90 @@ const SUBJECTS = {
     other: { id: 'other', name: 'Khác', icon: '📚', color: '#95E1D3' }
 };
 
-// Upload and parse PDF (Admin only)
+// Upload and parse PDF (Admin only) — returns jobId immediately, processes in background
 router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No PDF file uploaded' });
-        }
-
-        const { subject, title, grade } = req.body;
-        
-        const fileId = uuidv4();
-        const filePath = req.file.path;
-        
-        console.log(`Processing PDF: ${req.file.originalname} (${fileId})`);
-        
-        // Parse PDF
-        const result = await pdfParser.parsePDF(filePath, fileId);
-        
-        if (!result.success) {
-            return res.status(500).json({ 
-                error: 'Failed to parse PDF',
-                details: result.error 
-            });
-        }
-
-        // Determine subject from filename or explicit choice
-        let quizSubject = subject || 'other';
-        const filenameLower = req.file.originalname.toLowerCase();
-        
-        if (filenameLower.includes('english') || filenameLower.includes('ioe') || filenameLower.includes('anh')) {
-            quizSubject = 'english';
-        } else if (filenameLower.includes('vietnam') || filenameLower.includes('việt') || filenameLower.includes('tiếng')) {
-            quizSubject = 'vietnamese';
-        } else if (filenameLower.includes('math') || filenameLower.includes('toán')) {
-            quizSubject = 'math';
-        }
-
-        // Prepare quiz data
-        const quiz = {
-            id: fileId,
-            filename: req.file.originalname,
-            title: title || req.file.originalname.replace('.pdf', ''),
-            subject: quizSubject,
-            grade: grade || '2',
-            uploadedBy: req.user.email,
-            uploadedAt: new Date().toISOString(),
-            questions: result.questions,
-            questionCount: result.questionCount,
-            status: 'ready'
-        };
-        
-        // Save to database if available, otherwise use memory
-        if (process.env.DATABASE_URL) {
-            await saveExam(quiz.title, quizSubject, quiz, req.user.email);
-        }
-        
-        res.json({
-            success: true,
-            quiz: {
-                id: fileId,
-                filename: quiz.filename,
-                title: quiz.title,
-                subject: quiz.subject,
-                grade: quiz.grade,
-                questionCount: quiz.questionCount,
-                uploadedAt: quiz.uploadedAt,
-                status: quiz.status
-            }
-        });
-
-    } catch (error) {
-        console.error('Upload error:', error);
-        res.status(500).json({ error: error.message });
+    if (!req.file) {
+        return res.status(400).json({ error: 'No PDF file uploaded' });
     }
+
+    const { subject, title, grade } = req.body;
+    const fileId = uuidv4();
+    const jobId = uuidv4();
+    const filePath = req.file.path;
+
+    console.log(`Processing PDF: ${req.file.originalname} (${fileId})`);
+
+    // Create job and respond immediately — don't make the client wait
+    createJob(jobId);
+    res.json({ success: true, jobId, status: 'processing' });
+
+    // Run OCR/parsing in background
+    (async () => {
+        try {
+            const result = await pdfParser.parsePDF(filePath, fileId, (progress) => {
+                updateJob(jobId, progress);
+            });
+
+            if (!result.success) {
+                updateJob(jobId, { status: 'error', error: result.error || 'Parsing failed' });
+                return;
+            }
+
+            // Determine subject from filename
+            let quizSubject = subject || 'other';
+            const filenameLower = req.file.originalname.toLowerCase();
+            if (filenameLower.includes('english') || filenameLower.includes('ioe') || filenameLower.includes('anh')) {
+                quizSubject = 'english';
+            } else if (filenameLower.includes('vietnam') || filenameLower.includes('việt') || filenameLower.includes('tiếng')) {
+                quizSubject = 'vietnamese';
+            } else if (filenameLower.includes('math') || filenameLower.includes('toán')) {
+                quizSubject = 'math';
+            }
+
+            const quiz = {
+                id: fileId,
+                filename: req.file.originalname,
+                title: title || req.file.originalname.replace('.pdf', ''),
+                subject: quizSubject,
+                grade: grade || '2',
+                uploadedBy: req.user.email,
+                uploadedAt: new Date().toISOString(),
+                questions: result.questions,
+                questionCount: result.questionCount,
+                status: 'ready'
+            };
+
+            if (process.env.DATABASE_URL) {
+                await saveExam(quiz.title, quizSubject, quiz, req.user.email);
+            }
+
+            updateJob(jobId, {
+                status: 'done',
+                progress: 100,
+                total: 100,
+                message: `✅ Hoàn thành! ${result.questionCount} câu hỏi`,
+                questionCount: result.questionCount,
+                result: {
+                    id: fileId,
+                    title: quiz.title,
+                    questionCount: result.questionCount,
+                    subject: quizSubject,
+                    grade: quiz.grade
+                }
+            });
+
+        } catch (err) {
+            console.error('Background processing error:', err);
+            updateJob(jobId, { status: 'error', error: err.message });
+        }
+    })();
+});
+
+// Progress polling endpoint
+router.get('/progress/:jobId', (req, res) => {
+    const job = getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json(job);
 });
 
 // Get quiz by ID (Public - for taking quiz)

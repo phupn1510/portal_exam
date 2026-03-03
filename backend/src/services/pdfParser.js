@@ -18,7 +18,7 @@ class PDFParser {
             : null;
     }
 
-    async parsePDF(filePath, fileId) {
+    async parsePDF(filePath, fileId, onProgress = null) {
         try {
             const fileImagesDir = path.join(this.imagesDir, fileId);
             if (!fs.existsSync(fileImagesDir)) {
@@ -26,6 +26,7 @@ class PDFParser {
             }
 
             // Step 1: Try text extraction with pdf-parse
+            onProgress?.({ progress: 0, total: 100, message: '📄 Đang đọc file PDF...' });
             const dataBuffer = fs.readFileSync(filePath);
             const pdfData = await pdf(dataBuffer);
             const fullText = (pdfData.text || '').trim();
@@ -41,18 +42,22 @@ class PDFParser {
             if (hasEnoughText && this.openai) {
                 // Text-based PDF → AI text parsing
                 console.log('Strategy: AI text parsing');
-                questions = await this.parseWithAIText(fullText, pdfData.numpages);
+                onProgress?.({ progress: 10, total: 100, message: '🤖 PDF có văn bản — đang phân tích bằng AI...' });
+                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress);
             } else if (this.openai) {
                 // Image-based PDF (scanned) → Vision OCR
                 console.log('Strategy: AI Vision OCR (scanned PDF detected)');
-                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages);
+                onProgress?.({ progress: 5, total: 100, message: '🖼️ PDF dạng ảnh — đang chuyển đổi sang hình ảnh...' });
+                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress);
             } else {
                 // Fallback: basic regex (no OpenAI key)
                 console.log('Strategy: Regex fallback (no OpenAI key configured)');
+                onProgress?.({ progress: 50, total: 100, message: '📝 Đang trích xuất câu hỏi...' });
                 questions = this.parseQuestionsFromText(fullText);
             }
 
             console.log(`✅ Parsed ${questions.length} questions`);
+            onProgress?.({ progress: 100, total: 100, message: `✅ Hoàn thành! Tìm thấy ${questions.length} câu hỏi`, questionCount: questions.length });
 
             return {
                 success: true,
@@ -69,8 +74,7 @@ class PDFParser {
 
     // ─── AI Text Parsing ──────────────────────────────────────────────────────
 
-    async parseWithAIText(text, numPages) {
-        // Split into chunks of ~3000 chars to stay within token limits
+    async parseWithAIText(text, numPages, onProgress) {
         const chunkSize = 3000;
         const chunks = [];
         for (let i = 0; i < text.length; i += chunkSize) {
@@ -80,12 +84,13 @@ class PDFParser {
         const allQuestions = [];
 
         for (let i = 0; i < chunks.length; i++) {
+            const pct = Math.round(10 + ((i + 1) / chunks.length) * 85);
+            onProgress?.({ progress: pct, total: 100, message: `🤖 Phân tích đoạn văn bản ${i + 1}/${chunks.length}...` });
             console.log(`  Parsing text chunk ${i + 1}/${chunks.length}...`);
             const questions = await this.extractQuestionsFromText(chunks[i]);
             allQuestions.push(...questions);
         }
 
-        // Deduplicate by question number
         const seen = new Set();
         return allQuestions.filter(q => {
             if (seen.has(q.number)) return false;
@@ -152,19 +157,18 @@ Do NOT include any text before or after the JSON array.`
 
     // ─── AI Vision Parsing (for scanned/image PDFs) ───────────────────────────
 
-    async parseWithVision(filePath, fileId, fileImagesDir, numPages) {
-        // Check if pdftoppm is available
+    async parseWithVision(filePath, fileId, fileImagesDir, numPages, onProgress) {
         const hasPdftoppm = await this.checkPdftoppm();
         if (!hasPdftoppm) {
             console.warn('pdftoppm not found — falling back to regex parser');
             return [];
         }
 
-        // Convert PDF pages to images (limit to 20 pages max)
         const maxPages = Math.min(numPages, 20);
         const outputBase = path.join(fileImagesDir, 'page');
 
         try {
+            onProgress?.({ progress: 10, total: 100, message: `🖼️ Đang chuyển ${maxPages} trang thành hình ảnh...` });
             console.log(`Converting ${maxPages} pages to images...`);
             await execAsync(
                 `pdftoppm -r 150 -jpeg -jpegopt quality=80 -l ${maxPages} "${filePath}" "${outputBase}"`
@@ -174,7 +178,6 @@ Do NOT include any text before or after the JSON array.`
             return [];
         }
 
-        // Find generated image files
         const imageFiles = fs.readdirSync(fileImagesDir)
             .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.ppm'))
             .sort()
@@ -182,23 +185,32 @@ Do NOT include any text before or after the JSON array.`
 
         console.log(`Generated ${imageFiles.length} page images`);
 
-        // Process images in batches of 4 pages
         const batchSize = 4;
+        const totalBatches = Math.ceil(imageFiles.length / batchSize);
         const allQuestions = [];
 
         for (let i = 0; i < imageFiles.length; i += batchSize) {
+            const batchNum = Math.floor(i / batchSize) + 1;
+            const pagesFrom = i + 1;
+            const pagesTo = Math.min(i + batchSize, imageFiles.length);
+            const pct = Math.round(20 + (batchNum / totalBatches) * 75);
+
+            onProgress?.({
+                progress: pct,
+                total: 100,
+                message: `🔍 OCR trang ${pagesFrom}–${pagesTo} / ${imageFiles.length} (batch ${batchNum}/${totalBatches})...`
+            });
+
             const batch = imageFiles.slice(i, i + batchSize);
-            console.log(`  OCR batch ${Math.floor(i / batchSize) + 1}: pages ${i + 1}-${i + batch.length}`);
+            console.log(`  OCR batch ${batchNum}: pages ${pagesFrom}-${pagesTo}`);
             const questions = await this.extractQuestionsFromImages(batch);
             allQuestions.push(...questions);
         }
 
-        // Cleanup images to save space
         try {
             imageFiles.forEach(f => fs.unlinkSync(f));
         } catch (_) { /* ignore cleanup errors */ }
 
-        // Deduplicate by question number
         const seen = new Set();
         return allQuestions.filter(q => {
             if (seen.has(q.number)) return false;
