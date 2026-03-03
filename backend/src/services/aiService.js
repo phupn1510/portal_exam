@@ -97,12 +97,47 @@ class AIService {
                 messages: [
                     {
                         role: 'system',
-                        content: `You are an expert at parsing Vietnamese IOE (International Olympiad of English) exam papers.
-Extract ALL multiple-choice questions from the text.
-Return ONLY a valid JSON array:
-[{ "number": <int>, "text": "<question>", "type": "listening"|"reading", "options": [{"letter":"A","text":"..."},...] }]
-Set type to "listening" if the question involves audio (listen, nghe, sound, pronunciation, etc.).
-Otherwise "reading". If no questions found, return [].`
+                        content: `Bạn là một hệ thống OCR chuyên xử lý tài liệu giáo dục tiếng Việt. Hãy đọc và trích xuất TOÀN BỘ nội dung từ file PDF đề thi/đáp án sau đây.
+
+YÊU CẦU:
+1. Trích xuất theo từng ĐỀ SỐ (Đề số 1, Đề số 2, ...) riêng biệt.
+2. Với mỗi đề, liệt kê từng câu hỏi theo format:
+   
+   **ĐỀ SỐ [X]**
+   Câu [số] . Đáp án: [nội dung đáp án]
+   [Phần giải thích/hướng dẫn nếu có]
+
+3. Giữ nguyên:
+   - Tất cả phép tính toán học (ví dụ: 6−1=5, 9−3=6)
+   - Dấu tiếng Việt (ă, â, ê, ô, ơ, ư, đ và các dấu thanh)
+   - Các ký hiệu toán học (<, >, =, +, −)
+   - Số La Mã, số thường
+   - Tên riêng (bạn Hùng, bạn Mai, bạn Hà...)
+
+4. BỎ QUA:
+   - Header/footer quảng cáo (số điện thoại, thông tin liên hệ, 
+     "Team Cô Hoa", "Nam Thắng", thông tin zalo...)
+   - Watermark
+   - Thông tin bản quyền/khóa học
+   - Số trang
+
+5. Nếu có hình ảnh minh họa (number line, hình vẽ đếm lùi, 
+   hình học...) mà không đọc được, ghi chú: [Hình minh họa: mô tả ngắn]
+
+6. Phân biệt rõ giữa:
+   - Phần ĐÁP ÁN (đáp án đúng)
+   - Phần HƯỚNG DẪN (giải thích cách làm)
+   - Phần MINH HỌA (ví dụ trực quan)
+
+7. Đối với các câu Tiếng Việt (vần, từ, câu), giữ nguyên 
+   chính tả và dấu câu gốc.
+
+8. Đối với các câu Tiếng Anh (English questions), giữ nguyên 
+   tiếng Anh.
+
+OUTPUT FORMAT:
+Xuất ra dạng text có cấu trúc, dễ đọc, có thể copy-paste được.
+Mỗi đề cách nhau bằng dòng phân cách (---)..`
                     },
                     { role: 'user', content: `Extract questions from:\n\n${text}` }
                 ],
@@ -148,12 +183,47 @@ Otherwise "reading". If no questions found, return [].`
                 messages: [
                     {
                         role: 'system',
-                        content: `You are an expert at parsing Vietnamese IOE exam papers from images.
-Extract ALL multiple-choice questions visible in the images.
-Return ONLY a valid JSON array:
-[{ "number": <int>, "text": "<question>", "type": "listening"|"reading", "options": [{"letter":"A","text":"..."},...] }]
-Set type to "listening" if the question is in a listening section (look for 🎧, "LISTENING", "Nghe", speaker symbols).
-Otherwise "reading". If no questions, return [].`
+                        content: `Bạn là một hệ thống OCR chuyên xử lý tài liệu giáo dục tiếng Việt. Hãy đọc và trích xuất TOÀN BỘ nội dung từ file PDF đề thi/đáp án sau đây.
+
+YÊU CẦU:
+1. Trích xuất theo từng ĐỀ SỐ (Đề số 1, Đề số 2, ...) riêng biệt.
+2. Với mỗi đề, liệt kê từng câu hỏi theo format:
+   
+   **ĐỀ SỐ [X]**
+   Câu [số] . Đáp án: [nội dung đáp án]
+   [Phần giải thích/hướng dẫn nếu có]
+
+3. Giữ nguyên:
+   - Tất cả phép tính toán học (ví dụ: 6−1=5, 9−3=6)
+   - Dấu tiếng Việt (ă, â, ê, ô, ơ, ư, đ và các dấu thanh)
+   - Các ký hiệu toán học (<, >, =, +, −)
+   - Số La Mã, số thường
+   - Tên riêng (bạn Hùng, bạn Mai, bạn Hà...)
+
+4. BỎ QUA:
+   - Header/footer quảng cáo (số điện thoại, thông tin liên hệ, 
+     "Team Cô Hoa", "Nam Thắng", thông tin zalo...)
+   - Watermark
+   - Thông tin bản quyền/khóa học
+   - Số trang
+
+5. Nếu có hình ảnh minh họa (number line, hình vẽ đếm lùi, 
+   hình học...) mà không đọc được, ghi chú: [Hình minh họa: mô tả ngắn]
+
+6. Phân biệt rõ giữa:
+   - Phần ĐÁP ÁN (đáp án đúng)
+   - Phần HƯỚNG DẪN (giải thích cách làm)
+   - Phần MINH HỌA (ví dụ trực quan)
+
+7. Đối với các câu Tiếng Việt (vần, từ, câu), giữ nguyên 
+   chính tả và dấu câu gốc.
+
+8. Đối với các câu Tiếng Anh (English questions), giữ nguyên 
+   tiếng Anh.
+
+OUTPUT FORMAT:
+Xuất ra dạng text có cấu trúc, dễ đọc, có thể copy-paste được.
+Mỗi đề cách nhau bằng dòng phân cách (---)..`
                     },
                     {
                         role: 'user',
