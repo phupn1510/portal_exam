@@ -20,13 +20,12 @@ export async function initDatabase() {
         user_email VARCHAR(255)
       )
     `);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_hash ON exams(file_hash)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_tags ON exams USING GIN(tags)`);
-    // Migrate existing tables that may be missing new columns
+    // Migrate existing tables (ALTER TABLE is idempotent with IF NOT EXISTS)
     await client.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'`);
     await client.query(`ALTER TABLE exams ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_hash ON exams(file_hash)`).catch(() => {});
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_tags ON exams USING GIN(tags)`).catch(() => {});
+    // Create indexes only after columns are guaranteed to exist
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_hash ON exams(file_hash)`); } catch (_) {}
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_exams_tags ON exams USING GIN(tags)`); } catch (_) {}
     await client.query(`
       CREATE TABLE IF NOT EXISTS app_settings (
         key VARCHAR(100) PRIMARY KEY,
