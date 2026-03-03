@@ -21,7 +21,7 @@ class AIService {
         const cfg = {
             openai:  { envKey: 'OPENAI_API_KEY',   baseURL: undefined,                               defaultModel: 'gpt-4o-mini',         visionModel: 'gpt-4o'             },
             kimi:    { envKey: 'KIMI_API_KEY',      baseURL: 'https://api.moonshot.cn/v1',            defaultModel: 'kimi-k2-0711-preview', visionModel: null                  },
-            alibaba: { envKey: 'ALIBABA_API_KEY',   baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-max', visionModel: 'qwen-vl-max' },
+            alibaba: { envKey: 'ALIBABA_API_KEY',   baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-max', visionModel: 'qwen-vl-ocr-2025-11-20' },
             gemini:  { envKey: 'GEMINI_API_KEY',    baseURL: undefined,                               defaultModel: 'gemini-1.5-flash',     visionModel: 'gemini-1.5-flash'   },
         };
 
@@ -43,7 +43,7 @@ class AIService {
         const map = {
             openai:  { text: 'gpt-4o-mini',          vision: 'gpt-4o'          },
             kimi:    { text: 'kimi-k2-0711-preview',  vision: null              },
-            alibaba: { text: 'qwen-max',              vision: 'qwen-vl-max'     },
+            alibaba: { text: 'qwen-max',              vision: 'qwen-vl-ocr-2025-11-20' },
             gemini:  { text: 'gemini-1.5-flash',      vision: 'gemini-1.5-flash'},
         };
         return map[provider] || map.openai;
