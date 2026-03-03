@@ -5,7 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import OpenAI from 'openai';
+import aiService from './aiService.js';
 
 const execAsync = promisify(exec);
 
@@ -13,9 +13,6 @@ class PDFParser {
     constructor() {
         this.uploadDir = './uploads';
         this.imagesDir = './uploads/images';
-        this.openai = process.env.OPENAI_API_KEY
-            ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-            : null;
     }
 
     async parsePDF(filePath, fileId, onProgress = null) {
@@ -39,12 +36,13 @@ class PDFParser {
 
             let questions = [];
 
-            if (hasEnoughText && this.openai) {
+            if (hasEnoughText) {
                 // Text-based PDF → AI text parsing
-                console.log('Strategy: AI text parsing');
-                onProgress?.({ progress: 10, total: 100, message: '🤖 PDF có văn bản — đang phân tích bằng AI...' });
+                const provider = await aiService.resolveOcrProvider();
+                console.log(`Strategy: AI text parsing [provider=${provider}]`);
+                onProgress?.({ progress: 10, total: 100, message: `🤖 PDF có văn bản — đang phân tích bằng AI (${provider})...` });
                 questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress);
-            } else if (this.openai) {
+            } else {
                 // Image-based PDF (scanned) → Vision OCR
                 console.log('Strategy: AI Vision OCR (scanned PDF detected)');
                 onProgress?.({ progress: 5, total: 100, message: '🖼️ PDF dạng ảnh — đang chuyển đổi sang hình ảnh...' });
@@ -100,62 +98,17 @@ class PDFParser {
     }
 
     async extractQuestionsFromText(text) {
-        try {
-            const response = await this.openai.chat.completions.create({
-                model: 'gpt-4o-mini',
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are an expert at parsing Vietnamese IOE (International Olympiad of English) exam papers.
-Extract ALL multiple-choice questions from the text.
-Return ONLY a valid JSON array. Each element must have:
-{
-  "number": <integer>,
-  "text": "<question text>",
-  "type": "listening" | "reading",
-  "options": [
-    {"letter": "A", "text": "<option text>"},
-    {"letter": "B", "text": "<option text>"},
-    {"letter": "C", "text": "<option text>"},
-    {"letter": "D", "text": "<option text>"}
-  ]
-}
-Set type to "listening" if the question requires audio/listening (e.g. contains words like 'listen', 'nghe', 'you hear', 'sound', 'pronunciation', or is in a listening section).
-Otherwise set type to "reading".
-If no questions found, return [].
-Do NOT include any text before or after the JSON array.`
-                    },
-                    {
-                        role: 'user',
-                        content: `Extract questions from this exam text:\n\n${text}`
-                    }
-                ],
-                max_tokens: 4000,
-                temperature: 0
-            });
-
-            const content = response.choices[0].message.content.trim();
-            // Extract JSON array even if there's surrounding text
-            const jsonMatch = content.match(/\[[\s\S]*\]/);
-            if (!jsonMatch) return [];
-
-            const parsed = JSON.parse(jsonMatch[0]);
-            return parsed.map(q => ({
-                id: uuidv4(),
-                number: q.number || 0,
-                text: q.text || '',
-                options: (q.options || []).map(o => ({
-                    letter: o.letter,
-                    text: o.text
-                })),
-                correctAnswer: null,
-                type: 'reading',
-                imageUrl: null
-            }));
-        } catch (err) {
-            console.error('AI text parsing error:', err.message);
-            return [];
-        }
+        // Delegate to aiService — handles provider selection + logging
+        const raw = await aiService.parseQuestionsFromText(text);
+        return raw.map(q => ({
+            id: uuidv4(),
+            number: q.number || 0,
+            text: q.text || '',
+            options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
+            correctAnswer: null,
+            type: q.type === 'listening' ? 'listening' : 'reading',
+            imageUrl: null
+        }));
     }
 
     // ─── AI Vision Parsing (for scanned/image PDFs) ───────────────────────────
@@ -223,77 +176,20 @@ Do NOT include any text before or after the JSON array.`
     }
 
     async extractQuestionsFromImages(imagePaths) {
-        try {
-            // Encode images as base64
-            const imageContents = imagePaths.map(imgPath => {
-                const imageData = fs.readFileSync(imgPath);
-                const base64 = imageData.toString('base64');
-                return {
-                    type: 'image_url',
-                    image_url: {
-                        url: `data:image/jpeg;base64,${base64}`,
-                        detail: 'high'
-                    }
-                };
-            });
-
-            const response = await this.openai.chat.completions.create({
-                model: 'gpt-4o',
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are an expert at parsing Vietnamese IOE (International Olympiad of English) exam papers from images.
-Extract ALL multiple-choice questions visible in the images.
-Return ONLY a valid JSON array:
-[{
-  "number": <integer>,
-  "text": "<question text>",
-  "type": "listening" | "reading",
-  "options": [
-    {"letter": "A", "text": "<option>"},
-    {"letter": "B", "text": "<option>"},
-    {"letter": "C", "text": "<option>"},
-    {"letter": "D", "text": "<option>"}
-  ]
-}]
-Set type to "listening" if the question is in a listening/audio section (look for headphone icons 🎧, section labels like "LISTENING", "Part: Listening", "Nghe", speaker symbols, or text referencing audio).
-Otherwise set type to "reading".
-If no questions, return [].`
-                    },
-                    {
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: 'Extract all questions and answer choices from these exam pages:' },
-                            ...imageContents
-                        ]
-                    }
-                ],
-                max_tokens: 4000,
-                temperature: 0
-            });
-
-            const content = response.choices[0].message.content.trim();
-            const jsonMatch = content.match(/\[[\s\S]*\]/);
-            if (!jsonMatch) return [];
-
-            const parsed = JSON.parse(jsonMatch[0]);
-            return parsed.map(q => ({
-                id: uuidv4(),
-                number: q.number || 0,
-                text: q.text || '',
-                options: (q.options || []).map(o => ({
-                    letter: o.letter,
-                    text: o.text
-                })),
-                correctAnswer: null,
-                type: q.type === 'listening' ? 'listening' : 'reading',
-                imageUrl: null
-            }));
-        } catch (err) {
-            console.error('Vision OCR error:', err.message);
-            return [];
-        }
+        // Read files as base64 and delegate to aiService (handles provider selection)
+        const base64Images = imagePaths.map(p => fs.readFileSync(p).toString('base64'));
+        const raw = await aiService.parseQuestionsFromImages(base64Images);
+        return raw.map(q => ({
+            id: uuidv4(),
+            number: q.number || 0,
+            text: q.text || '',
+            options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
+            correctAnswer: null,
+            type: q.type === 'listening' ? 'listening' : 'reading',
+            imageUrl: null
+        }));
     }
+
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 

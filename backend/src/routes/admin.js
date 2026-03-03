@@ -17,13 +17,14 @@ function isOwner(req, res, next) {
 router.get('/settings', isOwner, async (req, res) => {
     try {
         const emails = await getAdminEmails();
-        const providers = ['openai', 'kimi', 'gemini'];
+        const providers = ['openai', 'kimi', 'alibaba', 'gemini'];
         const keys = {};
         for (const p of providers) {
             const key = await getApiKey(p);
-            keys[p] = key ? `${key.slice(0, 8)}${'*'.repeat(12)}` : null; // masked
+            keys[p] = key ? `${key.slice(0, 8)}${'*'.repeat(12)}` : null;
         }
-        res.json({ adminEmails: emails, apiKeys: keys, ownerEmail: OWNER_EMAIL });
+        const ocrProvider = await getApiKey('ocr_provider') || process.env.OCR_PROVIDER || 'auto';
+        res.json({ adminEmails: emails, apiKeys: keys, ownerEmail: OWNER_EMAIL, ocrProvider });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -56,7 +57,7 @@ router.delete('/emails/:email', isOwner, async (req, res) => {
 // POST /api/admin/keys — set an API key
 router.post('/keys', isOwner, async (req, res) => {
     const { provider, key } = req.body;
-    const allowed = ['openai', 'kimi', 'gemini'];
+    const allowed = ['openai', 'kimi', 'gemini', 'alibaba'];
     if (!allowed.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
     if (!key || key.length < 10) return res.status(400).json({ error: 'Key too short' });
     try {
@@ -65,6 +66,21 @@ router.post('/keys', isOwner, async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// GET /api/admin/ocr-provider — current OCR provider
+router.get('/ocr-provider', isOwner, async (req, res) => {
+    const p = await getApiKey('ocr_provider').catch(() => null);
+    res.json({ ocrProvider: p || process.env.OCR_PROVIDER || 'auto' });
+});
+
+// POST /api/admin/ocr-provider — set OCR provider
+router.post('/ocr-provider', isOwner, async (req, res) => {
+    const { provider } = req.body;
+    const allowed = ['auto', 'openai', 'kimi', 'alibaba'];
+    if (!allowed.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
+    await setApiKey('ocr_provider', provider);
+    res.json({ success: true, ocrProvider: provider });
 });
 
 export default router;

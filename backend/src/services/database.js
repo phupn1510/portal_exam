@@ -75,6 +75,9 @@ async function getSetting(key) {
   return result.rows[0]?.value ?? null;
 }
 
+export { getSetting };
+
+
 async function setSetting(key, value) {
   await pool.query(
     `INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, NOW())
