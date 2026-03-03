@@ -95,17 +95,16 @@ class PDFParser {
     }
 
     async extractQuestionsFromText(text) {
-        // Delegate to aiService — handles provider selection + logging
+        // Step 1: OCR — extract raw data
         const raw = await aiService.parseQuestionsFromText(text);
-        return raw.map(q => ({
-            id: uuidv4(),
-            number: q.number || 0,
-            text: q.text || '',
-            options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
-            correctAnswer: null,
-            type: q.type === 'listening' ? 'listening' : 'reading',
-            imageUrl: null
-        }));
+        if (!raw || raw.length === 0) return [];
+
+        // Step 2: Analyze — classify types, verify, mark interactive
+        const provider = await aiService.resolveAnalyzeProvider();
+        console.log(`[Analyze] Running question analysis with ${provider}...`);
+        const analyzed = await aiService.analyzeExtractedQuestions(raw, provider);
+
+        return this._normalizeOcrResponse(analyzed);
     }
 
     // ─── AI Vision Parsing (for scanned/image PDFs) ───────────────────────────
@@ -173,19 +172,86 @@ class PDFParser {
     }
 
     async extractQuestionsFromImages(imagePaths) {
-        // Read files as base64 and delegate to aiService (handles provider selection)
+        // Step 1: OCR
         const base64Images = imagePaths.map(p => fs.readFileSync(p).toString('base64'));
         const raw = await aiService.parseQuestionsFromImages(base64Images);
+        if (!raw || raw.length === 0) return [];
+
+        // Step 2: Analyze (run once per batch, not per page)
+        const provider = await aiService.resolveAnalyzeProvider();
+        const analyzed = await aiService.analyzeExtractedQuestions(raw, provider);
+
+        return this._normalizeOcrResponse(analyzed);
+    }
+
+    /**
+     * Normalize AI response to a flat array of quiz question objects.
+     * Handles three formats:
+     *   A) Legacy MCQ: [{ number, text, type, options:[{letter,text}] }]
+     *   B) Raw OCR (nested): [{ de_so, questions:[{ cau, dap_an, giai_thich }] }]
+     *   C) Analyzed (flat): [{ de_so, cau, type, interactive, correct, options, giai_thich }]
+     */
+    _normalizeOcrResponse(raw) {
+        if (!Array.isArray(raw) || raw.length === 0) return [];
+
+        const first = raw[0];
+
+        // Format C: flat analyzed output (has cau + type at top level, no nested questions array)
+        if (first && first.cau !== undefined && first.type !== undefined && !first.questions) {
+            return raw.map((q, i) => ({
+                id: uuidv4(),
+                number: q.cau ?? (i + 1),
+                deNumber: q.de_so ?? 1,
+                text: q.dap_an || '',
+                explanation: q.giai_thich || '',
+                options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
+                correctAnswer: q.correct || q.dap_an || null,
+                type: q.type || 'reading',
+                interactive: q.interactive !== false, // true unless explicitly false
+                imageUrl: null
+            }));
+        }
+
+        // Format B: nested de_so/questions (raw OCR output, no analyze step)
+        if (first && (first.de_so !== undefined || first.questions)) {
+            const result = [];
+            let globalIndex = 1;
+            for (const de of raw) {
+                const deNum = de.de_so ?? globalIndex;
+                for (const q of (de.questions || [])) {
+                    result.push({
+                        id: uuidv4(),
+                        number: q.cau ?? globalIndex,
+                        deNumber: deNum,
+                        text: q.dap_an || '',
+                        explanation: q.giai_thich || '',
+                        options: [],
+                        correctAnswer: q.dap_an || null,
+                        type: 'reading',
+                        interactive: false, // unknown until analyzed
+                        imageUrl: null
+                    });
+                    globalIndex++;
+                }
+            }
+            return result;
+        }
+
+        // Format A: legacy MCQ (IOE format)
         return raw.map(q => ({
             id: uuidv4(),
             number: q.number || 0,
+            deNumber: null,
             text: q.text || '',
+            explanation: '',
             options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
             correctAnswer: null,
             type: q.type === 'listening' ? 'listening' : 'reading',
+            interactive: (q.options || []).length > 0,
             imageUrl: null
         }));
     }
+
 
 
     // ─── Helpers ──────────────────────────────────────────────────────────────

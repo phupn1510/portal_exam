@@ -80,6 +80,94 @@ class AIService {
         return 'openai';
     }
 
+    async resolveAnalyzeProvider() {
+        try {
+            const pref = await getApiKey('analyze_provider');
+            if (pref && pref !== 'auto') return pref;
+        } catch { /* ignore */ }
+        // Default: prefer openai (smarter for analysis), then alibaba
+        for (const p of ['openai', 'alibaba', 'gemini', 'kimi']) {
+            const client = await this._client(p);
+            if (client) return p;
+        }
+        return 'openai';
+    }
+
+    /**
+     * Step 2 of the pipeline: takes raw OCR output and uses AI to:
+     * - Classify question type (mcq / fill_blank / true_false)
+     * - Extract MCQ options (A/B/C/D) when present
+     * - Mark which questions are interactive (can student select an answer?)
+     * - Verify and clean up dap_an/giai_thich
+     */
+    async analyzeExtractedQuestions(rawOcrData, provider = null) {
+        const p = provider || await this.resolveAnalyzeProvider();
+        const client = await this._client(p);
+        if (!client) { console.warn(`⚠️ No API key for analyze provider: ${p}`); return rawOcrData; }
+
+        const model = this._modelConfig(p).text;
+        const start = Date.now();
+        this._log('🧠📡', p, model, null, 'Analyzing question types...');
+
+        const prompt = `Bạn là chuyên gia phân tích đề thi Việt Nam. Đây là dữ liệu OCR thô từ đề thi.
+
+NHIỆM VỤ: Phân tích và phân loại từng câu hỏi.
+
+INPUT (JSON từ OCR):
+${JSON.stringify(rawOcrData, null, 2)}
+
+OUTPUT: Trả về JSON array đã được phân tích. KHÔNG markdown, KHÔNG text ngoài JSON.
+
+Với mỗi câu, xác định:
+- "type": "mcq" (chọn A/B/C/D), "fill_blank" (điền vào chỗ trống), "true_false" (Đúng/Sai), "other"
+- "interactive": true nếu học sinh có thể chọn đáp án (mcq, true_false), false nếu điền tay (fill_blank)
+- "options": [{letter, text}] nếu là MCQ (trích từ giai_thich hoặc suy luận)
+- "correct": đáp án đúng (string)
+- Giữ nguyên "de_so", "cau", "dap_an", "giai_thich"
+
+FORMAT OUTPUT:
+[
+  {
+    "de_so": 1,
+    "cau": 1,
+    "type": "true_false",
+    "interactive": true,
+    "dap_an": "Đúng",
+    "correct": "Đúng",
+    "options": [{"letter": "A", "text": "Đúng"}, {"letter": "B", "text": "Sai"}],
+    "giai_thich": "..."
+  },
+  {
+    "de_so": 1,
+    "cau": 2,
+    "type": "fill_blank",
+    "interactive": false,
+    "dap_an": "5",
+    "correct": "5",
+    "options": [],
+    "giai_thich": "..."
+  }
+]`;
+
+        try {
+            const response = await client.chat.completions.create({
+                model,
+                messages: [
+                    { role: 'system', content: 'Bạn là chuyên gia phân tích đề thi. Chỉ trả về JSON array.' },
+                    { role: 'user', content: prompt }
+                ],
+                max_tokens: 6000,
+                temperature: 0
+            });
+            const content = response.choices[0].message.content.trim();
+            this._log('🧠✅', p, model, Date.now() - start, content);
+            return this._extractJsonArray(content);
+        } catch (err) {
+            this._log('🧠❌', p, model, Date.now() - start, err.message);
+            return rawOcrData; // return unanalyzed data as fallback
+        }
+    }
+
     // ─── OCR: parse questions from text ───────────────────────────────────────
 
     async parseQuestionsFromText(text, provider = null) {
@@ -116,30 +204,38 @@ YÊU CẦU:
 
 4. BỎ QUA:
    - Header/footer quảng cáo (số điện thoại, thông tin liên hệ, 
-     "Team Cô Hoa", "Nam Thắng", thông tin zalo...)
-   - Watermark
-   - Thông tin bản quyền/khóa học
-   - Số trang
+                        content: `Bạn là hệ thống OCR chuyên xử lý đề thi giáo dục tiếng Việt.
 
-5. Nếu có hình ảnh minh họa (number line, hình vẽ đếm lùi, 
-   hình học...) mà không đọc được, ghi chú: [Hình minh họa: mô tả ngắn]
+NHIỆM VỤ: Đọc nội dung text đề thi/đáp án và trả về JSON array.
 
-6. Phân biệt rõ giữa:
-   - Phần ĐÁP ÁN (đáp án đúng)
-   - Phần HƯỚNG DẪN (giải thích cách làm)
-   - Phần MINH HỌA (ví dụ trực quan)
+BỎ QUA: Quảng cáo, watermark, header/footer (số điện thoại, "Team Cô Hoa", "Nam Thắng", zalo, khóa học...), số trang.
 
-7. Đối với các câu Tiếng Việt (vần, từ, câu), giữ nguyên 
-   chính tả và dấu câu gốc.
+GIỮ NGUYÊN: Phép tính (6−1=5), dấu tiếng Việt, ký hiệu toán (<, >, =), tên riêng, tiếng Anh.
 
-8. Đối với các câu Tiếng Anh (English questions), giữ nguyên 
-   tiếng Anh.
+BẮT BUỘC: Chỉ trả về JSON array, KHÔNG markdown, KHÔNG giải thích, KHÔNG text ngoài JSON.
 
-OUTPUT FORMAT:
-Xuất ra dạng text có cấu trúc, dễ đọc, có thể copy-paste được.
-Mỗi đề cách nhau bằng dòng phân cách (---)..`
+FORMAT:
+[
+  {
+    "de_so": 1,
+    "questions": [
+      {
+        "cau": 1,
+        "dap_an": "Đúng",
+        "giai_thich": "Từ 6 đếm lùi 1 bước. 6−1=5. Bạn Hùng minh họa đúng."
+      }
+    ]
+  },
+  {
+    "de_so": 2,
+    "questions": [...]
+  }
+]
+
+Quy tắc cho "dap_an": Chỉ ghi đáp án ngắn gọn (số, từ, Đúng/Sai, chữ cái A/B/C/D...).
+Quy tắc cho "giai_thich": Ghi toàn bộ phần giải thích/hướng dẫn. Nếu không có, để "".`
                     },
-                    { role: 'user', content: `Extract questions from:\n\n${text}` }
+                    { role: 'user', content: `Trích xuất câu hỏi và đáp án từ:\n\n${text}` }
                 ],
                 max_tokens: 4000,
                 temperature: 0
@@ -147,8 +243,7 @@ Mỗi đề cách nhau bằng dòng phân cách (---)..`
 
             const content = response.choices[0].message.content.trim();
             this._log('✅', p, model, Date.now() - start, content);
-            const match = content.match(/\[[\s\S]*\]/);
-            return match ? JSON.parse(match[0]) : [];
+            return this._extractJsonArray(content);
         } catch (err) {
             this._log('❌', p, model, Date.now() - start, err.message);
             return [];

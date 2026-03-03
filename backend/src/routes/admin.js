@@ -25,7 +25,8 @@ router.get('/settings', isOwner, async (req, res) => {
         }
         const ocrProvider = await getApiKey('ocr_provider') || process.env.OCR_PROVIDER || 'auto';
         const answerProvider = await getApiKey('answer_provider') || process.env.ANSWER_PROVIDER || 'auto';
-        res.json({ adminEmails: emails, apiKeys: keys, ownerEmail: OWNER_EMAIL, ocrProvider, answerProvider });
+        const analyzeProvider = await getApiKey('analyze_provider') || 'auto';
+        res.json({ adminEmails: emails, apiKeys: keys, ownerEmail: OWNER_EMAIL, ocrProvider, answerProvider, analyzeProvider });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -97,6 +98,21 @@ router.post('/answer-provider', isOwner, async (req, res) => {
     if (!allowed.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
     await setApiKey('answer_provider', provider);
     res.json({ success: true, answerProvider: provider });
+});
+
+// GET /api/admin/analyze-provider
+router.get('/analyze-provider', isOwner, async (req, res) => {
+    const p = await getApiKey('analyze_provider').catch(() => null);
+    res.json({ analyzeProvider: p || 'auto' });
+});
+
+// POST /api/admin/analyze-provider
+router.post('/analyze-provider', isOwner, async (req, res) => {
+    const { provider } = req.body;
+    const allowed = ['auto', 'openai', 'kimi', 'alibaba', 'gemini'];
+    if (!allowed.includes(provider)) return res.status(400).json({ error: 'Invalid provider' });
+    await setApiKey('analyze_provider', provider);
+    res.json({ success: true, analyzeProvider: provider });
 });
 
 export default router;
