@@ -14,6 +14,7 @@ import pdfRouter from './routes/pdf.js';
 import quizRouter from './routes/quiz.js';
 import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
+import adminRouter from './routes/admin.js';
 import { configurePassport, configureSession, getCurrentUser } from './services/authService.js';
 
 dotenv.config();
@@ -78,6 +79,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/pdf', pdfRouter);
 app.use('/api/quiz', quizRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/admin', adminRouter);
 
 // Get current user
 app.get('/api/user', (req, res) => {

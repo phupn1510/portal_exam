@@ -435,3 +435,69 @@
     opacity: 0;
   }
 }
+
+/* ── Guest Modal ─────────────────────────────────────────────── */
+.modalOverlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9000; animation: fadeIn 0.25s ease;
+}
+.modal {
+  background: white; border-radius: 24px;
+  padding: 40px 36px; max-width: 420px; width: 90%;
+  text-align: center; box-shadow: 0 16px 60px rgba(0,0,0,0.3);
+}
+.modal h2 { font-size: 1.8rem; color: #2C3E50; margin-bottom: 8px; }
+.modal > p { color: #666; margin-bottom: 20px; line-height: 1.5; }
+.modalBtns { display: flex; gap: 10px; margin-top: 16px; }
+.modalPrimary {
+  flex: 1; padding: 14px;
+  background: linear-gradient(135deg, #4ECDC4, #6EE7DE);
+  color: white; border: none; border-radius: 12px;
+  font-weight: 700; font-size: 1rem; cursor: pointer;
+}
+.modalPrimary:hover { transform: translateY(-2px); }
+.modalSecondary {
+  padding: 14px 20px; background: #f0f0f0;
+  color: #666; border: none; border-radius: 12px;
+  font-weight: 600; cursor: pointer;
+}
+.modalHint { font-size: 0.85rem; color: #888; margin-top: 16px; margin-bottom: 0 !important; }
+.linkBtn { background: none; border: none; color: #4ECDC4; font-weight: 600; cursor: pointer; text-decoration: underline; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Guest info in header ────────────────────────────────────── */
+.guestInfo {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(255,255,255,0.2);
+  padding: 8px 16px; border-radius: 12px; color: white; font-weight: 600;
+}
+
+/* ── Admin link ──────────────────────────────────────────────── */
+.adminLink {
+  background: rgba(255,255,255,0.15); color: white;
+  text-decoration: none; padding: 6px 12px; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 600; transition: background 0.2s;
+}
+.adminLink:hover { background: rgba(255,255,255,0.3); }
+
+/* ── Quiz card wrapper + delete ──────────────────────────────── */
+.quizCardWrapper { position: relative; }
+.deleteBtn {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(231,76,60,0.1); border: none;
+  border-radius: 8px; padding: 4px 8px; cursor: pointer;
+  font-size: 1rem; transition: all 0.2s; opacity: 0;
+}
+.quizCardWrapper:hover .deleteBtn { opacity: 1; }
+.deleteBtn:hover { background: #E74C3C; }
+
+/* ── Tag pills ───────────────────────────────────────────────── */
+.tagRow { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0; }
+.tag {
+  background: #e8f4fd; color: #2980b9;
+  padding: 2px 8px; border-radius: 10px;
+  font-size: 0.72rem; font-weight: 600;
+}
+

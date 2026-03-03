@@ -112,6 +112,7 @@ Return ONLY a valid JSON array. Each element must have:
 {
   "number": <integer>,
   "text": "<question text>",
+  "type": "listening" | "reading",
   "options": [
     {"letter": "A", "text": "<option text>"},
     {"letter": "B", "text": "<option text>"},
@@ -119,6 +120,8 @@ Return ONLY a valid JSON array. Each element must have:
     {"letter": "D", "text": "<option text>"}
   ]
 }
+Set type to "listening" if the question requires audio/listening (e.g. contains words like 'listen', 'nghe', 'you hear', 'sound', 'pronunciation', or is in a listening section).
+Otherwise set type to "reading".
 If no questions found, return [].
 Do NOT include any text before or after the JSON array.`
                     },
@@ -245,6 +248,7 @@ Return ONLY a valid JSON array:
 [{
   "number": <integer>,
   "text": "<question text>",
+  "type": "listening" | "reading",
   "options": [
     {"letter": "A", "text": "<option>"},
     {"letter": "B", "text": "<option>"},
@@ -252,6 +256,8 @@ Return ONLY a valid JSON array:
     {"letter": "D", "text": "<option>"}
   ]
 }]
+Set type to "listening" if the question is in a listening/audio section (look for headphone icons 🎧, section labels like "LISTENING", "Part: Listening", "Nghe", speaker symbols, or text referencing audio).
+Otherwise set type to "reading".
 If no questions, return [].`
                     },
                     {
@@ -280,7 +286,7 @@ If no questions, return [].`
                     text: o.text
                 })),
                 correctAnswer: null,
-                type: 'reading',
+                type: q.type === 'listening' ? 'listening' : 'reading',
                 imageUrl: null
             }));
         } catch (err) {

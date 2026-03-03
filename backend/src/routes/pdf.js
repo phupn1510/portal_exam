@@ -2,10 +2,11 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import pdfParser from '../services/pdfParser.js';
 import { isAuthenticated, isAdmin, getCurrentUser } from '../services/authService.js';
-import { saveExam, getExams, getExamById, deleteExam } from '../services/database.js';
+import { saveExam, getExams, getExamById, deleteExam, checkExamByHash } from '../services/database.js';
 import { createJob, updateJob, getJob } from '../services/jobService.js';
 
 const router = express.Router();
@@ -25,14 +26,29 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         return res.status(400).json({ error: 'No PDF file uploaded' });
     }
 
-    const { subject, title, grade } = req.body;
+    const { subject, title, grade, tags: tagsRaw } = req.body;
+    const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
     const fileId = uuidv4();
     const jobId = uuidv4();
     const filePath = req.file.path;
 
-    console.log(`Processing PDF: ${req.file.originalname} (${fileId})`);
+    // ── Checksum dedup ─────────────────────────────────────────
+    const fileBuffer = fs.readFileSync(filePath);
+    const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
-    // Create job and respond immediately — don't make the client wait
+    if (process.env.DATABASE_URL) {
+        const existing = await checkExamByHash(fileHash);
+        if (existing) {
+            fs.unlinkSync(filePath);
+            return res.status(409).json({
+                error: 'duplicate',
+                message: `File này đã được upload trước đó: "${existing.title}" (ID: ${existing.id})`
+            });
+        }
+    }
+
+    console.log(`Processing PDF: ${req.file.originalname} (${fileId}) hash=${fileHash.slice(0,12)}...`);
+
     createJob(jobId);
     res.json({ success: true, jobId, status: 'processing' });
 
@@ -73,7 +89,7 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
             };
 
             if (process.env.DATABASE_URL) {
-                await saveExam(quiz.title, quizSubject, quiz, req.user.email);
+                await saveExam(quiz.title, quizSubject, quiz, req.user.email, fileHash, tags);
             }
 
             updateJob(jobId, {
@@ -135,6 +151,7 @@ router.get('/', async (req, res) => {
             id: e.id,
             title: e.title,
             subject: e.subject,
+            tags: e.tags || [],
             uploadedAt: e.created_at,
             subjectInfo: SUBJECTS[e.subject] || SUBJECTS.other
         }));

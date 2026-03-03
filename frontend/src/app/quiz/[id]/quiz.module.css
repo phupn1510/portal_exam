@@ -1,7 +1,16 @@
+/* quiz.module.css — additions for listening badge, result card, provider bar */
+
 .container {
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
+}
+
+.backLink {
+  color: white;
+  text-decoration: none;
+  font-size: 0.9rem;
+  opacity: 0.8;
 }
 
 .header {
@@ -9,11 +18,15 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .header h1 {
   color: white;
-  font-size: 1.5rem;
+  font-size: 1.3rem;
+  flex: 1;
+  text-align: center;
 }
 
 .progress {
@@ -22,13 +35,19 @@
   border-radius: 20px;
   color: white;
   font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.listeningCount {
+  opacity: 0.8;
+  font-size: 0.85rem;
 }
 
 .progressBar {
   height: 8px;
   background: rgba(255,255,255,0.2);
   border-radius: 10px;
-  margin-bottom: 30px;
+  margin-bottom: 16px;
   overflow: hidden;
 }
 
@@ -39,6 +58,55 @@
   transition: width 0.3s ease;
 }
 
+/* ── Provider selector ───────────────────────────────────────── */
+.providerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  color: rgba(255,255,255,0.9);
+  font-size: 0.88rem;
+}
+
+.providerBtn {
+  padding: 6px 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 20px;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.providerActive {
+  background: white;
+  color: #2C3E50;
+  border-color: white;
+}
+
+/* ── Listening badge ─────────────────────────────────────────── */
+.listeningBadge {
+  background: linear-gradient(135deg, #f8f3e8, #ffeaa7);
+  border: 2px solid #fdcb6e;
+  color: #6d4c00;
+  border-radius: 12px;
+  padding: 12px 18px;
+  margin-bottom: 20px;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.listeningOption {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* ── Question card ───────────────────────────────────────────── */
 .questionCard {
   background: white;
   border-radius: 20px;
@@ -74,11 +142,7 @@
   font-weight: 500;
 }
 
-.options {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+.options { display: flex; flex-direction: column; gap: 12px; }
 
 .option {
   display: flex;
@@ -90,124 +154,72 @@
   cursor: pointer;
   transition: all 0.25s ease;
 }
-
-.option:hover {
-  background: #EEF2F9;
-}
-
-.option.selected {
-  background: #E8F4FD;
-  border-color: #4ECDC4;
-}
+.option:hover { background: #EEF2F9; }
+.option.selected { background: #E8F4FD; border-color: #4ECDC4; }
 
 .optionLetter {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: white;
-  border-radius: 10px;
-  font-weight: 700;
-  color: #2C3E50;
-  margin-right: 16px;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  background: white; border-radius: 10px;
+  font-weight: 700; color: #2C3E50; margin-right: 16px; flex-shrink: 0;
 }
+.option.selected .optionLetter { background: #4ECDC4; color: white; }
+.optionText { flex: 1; color: #2C3E50; }
 
-.option.selected .optionLetter {
-  background: #4ECDC4;
-  color: white;
-}
-
-.optionText {
-  flex: 1;
-  color: #2C3E50;
-}
-
+/* ── Explanation ─────────────────────────────────────────────── */
 .explanation {
-  margin-top: 24px;
-  padding: 20px;
+  margin-top: 24px; padding: 20px;
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-radius: 14px;
-  border-left: 4px solid #4ECDC4;
+  border-radius: 14px; border-left: 4px solid #4ECDC4;
 }
+.explanation h3 { color: #2C3E50; margin-bottom: 12px; font-size: 1rem; }
+.explanation p  { color: #495057; line-height: 1.6; }
 
-.explanation h3 {
-  color: #2C3E50;
-  margin-bottom: 12px;
-  font-size: 1rem;
-}
-
-.explanation p {
-  color: #495057;
-  line-height: 1.6;
-}
-
-.actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
+/* ── Actions ─────────────────────────────────────────────────── */
+.actions { display: flex; justify-content: space-between; gap: 12px; }
 
 .btn {
-  padding: 14px 28px;
-  border: none;
-  border-radius: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  background: white;
-  color: #2C3E50;
-  transition: all 0.25s ease;
+  padding: 14px 28px; border: none; border-radius: 12px;
+  font-weight: 700; cursor: pointer; background: white;
+  color: #2C3E50; transition: all 0.25s ease;
 }
-
-.btn:hover:not(:disabled) {
-  background: #f0f0f0;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.btn:hover:not(:disabled) { background: #f0f0f0; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btnAI {
-  padding: 14px 28px;
-  border: none;
-  border-radius: 12px;
-  font-weight: 700;
-  cursor: pointer;
+  padding: 14px 28px; border: none; border-radius: 12px;
+  font-weight: 700; cursor: pointer;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  transition: all 0.25s ease;
+  color: white; transition: all 0.25s ease;
 }
-
-.btnAI:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-}
-
-.btnAI:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.btnAI:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(102,126,234,0.4); }
+.btnAI:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btnSubmit {
-  padding: 14px 28px;
-  border: none;
-  border-radius: 12px;
-  font-weight: 700;
-  cursor: pointer;
+  padding: 14px 28px; border: none; border-radius: 12px;
+  font-weight: 700; cursor: pointer;
   background: linear-gradient(135deg, #4ECDC4 0%, #6EE7DE 100%);
-  color: white;
-  transition: all 0.25s ease;
+  color: white; transition: all 0.25s ease;
+}
+.btnSubmit:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(78,205,196,0.4); }
+
+/* ── Result card ─────────────────────────────────────────────── */
+.resultCard {
+  background: white; border-radius: 24px;
+  padding: 48px 32px; text-align: center;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+  max-width: 480px; margin: 60px auto;
+}
+.resultEmoji   { font-size: 4rem; margin-bottom: 16px; }
+.resultCard h2 { font-size: 1.8rem; color: #2C3E50; margin-bottom: 12px; }
+.resultScore   { font-size: 3.5rem; font-weight: 800; color: #4ECDC4; line-height: 1; }
+.resultPct     { font-size: 1.4rem; color: #888; margin-bottom: 8px; }
+.resultNote    { color: #f39c12; font-size: 0.9rem; margin-bottom: 16px; }
+.resultBar     { height: 12px; background: #f0f0f0; border-radius: 99px; overflow: hidden; margin-top: 16px; }
+.resultFill    {
+  height: 100%;
+  background: linear-gradient(90deg, #4ECDC4, #6EE7DE);
+  border-radius: 99px; transition: width 1s ease;
 }
 
-.btnSubmit:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4);
-}
-
-.loading, .error {
-  text-align: center;
-  padding: 60px;
-  color: white;
-  font-size: 1.2rem;
-}
+.loading, .error { text-align: center; padding: 60px; color: white; font-size: 1.2rem; }
