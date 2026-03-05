@@ -74,21 +74,23 @@ CÁC DẠNG CÂU HỎI:
 2. Listening: Có biểu tượng tai nghe, "Nghe:", "Listen" → type = "listening"
 3. Fill-in-blank: "Look and write", điền vào ___
 4. Pick the extra word: Từ phân cách bằng "/"
-5. Image-based: Có hình ảnh kèm câu hỏi → mô tả hình
+5. Image-based: Có hình ảnh kèm câu hỏi → ghi "has_image": true
 
 CÁCH TRÍCH XUẤT:
 - "cau": số thứ tự
+- "page": số thứ tự ảnh mà câu hỏi nằm trên (1 = ảnh đầu tiên, 2 = ảnh thứ hai, ...)
 - "noi_dung": Nội dung câu hỏi đầy đủ
 - "dap_an": Đáp án đúng nếu thấy (letter hoặc text)
 - "giai_thich": Toàn bộ nội dung câu + options
 - "options": [{letter, text}] cho MCQ
 - "type": "mcq" | "listening" | "fill_blank" | "other"
+- "has_image": true nếu câu hỏi có hình ảnh minh họa (ảnh con vật, đồ vật, etc.)
 
 BỎ QUA: Watermark, QR, quảng cáo, số điện thoại.
-GIỮ NGUYÊN: Tiếng Anh chính xác, hình ảnh mô tả.
+GIỮ NGUYÊN: Tiếng Anh chính xác.
 BẮT BUỘC: Chỉ trả về JSON array, KHÔNG markdown.
 
-FORMAT: [{"de_so":1,"questions":[{"cau":1,"noi_dung":"...","dap_an":"B","giai_thich":"...","options":[{"letter":"A","text":"..."}],"type":"mcq"}]}]`
+FORMAT: [{"de_so":1,"questions":[{"cau":1,"page":1,"noi_dung":"...","dap_an":"B","giai_thich":"...","options":[{"letter":"A","text":"..."}],"type":"mcq","has_image":false}]}]`
     },
 
     vioedu_answer: {
@@ -298,13 +300,15 @@ Với mỗi câu, xác định:
 - "interactive": true nếu học sinh có thể chọn đáp án (mcq, true_false), false nếu điền tay (fill_blank)
 - "options": [{letter, text}] nếu là MCQ (trích từ giai_thich hoặc suy luận)
 - "correct": đáp án đúng (string)
-- Giữ nguyên "de_so", "cau", "dap_an", "giai_thich", "noi_dung" (QUAN TRỌNG: giữ nguyên noi_dung tiếng Anh gốc, KHÔNG dịch sang tiếng Việt)
+- Giữ nguyên "de_so", "cau", "dap_an", "giai_thich", "noi_dung", "page", "has_image" (QUAN TRỌNG: giữ nguyên noi_dung tiếng Anh gốc, KHÔNG dịch sang tiếng Việt)
 
 FORMAT OUTPUT:
 [
   {
     "de_so": 1,
     "cau": 1,
+    "page": 1,
+    "has_image": false,
     "noi_dung": "Which word has the sound like the letter R in RAINBOW?",
     "type": "mcq",
     "interactive": true,
@@ -315,14 +319,16 @@ FORMAT OUTPUT:
   },
   {
     "de_so": 1,
-    "cau": 2,
-    "noi_dung": "5 + 3 = ?",
+    "cau": 9,
+    "page": 3,
+    "has_image": true,
+    "noi_dung": "Look and write: ____",
     "type": "fill_blank",
     "interactive": false,
-    "dap_an": "8",
-    "correct": "8",
+    "dap_an": "",
+    "correct": "",
     "options": [],
-    "giai_thich": "5 + 3 = 8"
+    "giai_thich": "Look and write (image of a cow)"
   }
 ]`;
 
@@ -457,7 +463,8 @@ FORMAT OUTPUT:
             }
             const result = this._extractJsonArray(content);
             if (result.length === 0 && content.length > 50) {
-                console.warn(`⚠️ Vision OCR returned content but JSON parse failed. First 200 chars: ${content.slice(0, 200)}`);
+                console.warn(`⚠️ Vision OCR returned content but JSON parse failed.`);
+                console.warn(`   Content preview (500 chars): ${content.slice(0, 500)}`);
             }
             return result;
         } catch (err) {
@@ -501,7 +508,9 @@ FORMAT OUTPUT:
             }
         }
 
-        console.warn('⚠️ Could not parse JSON from OCR response');
+        console.warn('⚠️ Could not parse JSON from OCR response. Full content:');
+        console.warn(cleaned.slice(0, 500));
+        console.warn('--- END OF PREVIEW (total length: ' + cleaned.length + ') ---');
         return [];
     }
 

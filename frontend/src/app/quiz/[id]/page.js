@@ -203,7 +203,7 @@ export default function QuizPage() {
         {isFillBlank && <div className={styles.typeBadge}>✏️ Điền đáp án</div>}
 
         {currentQuestion.imageUrl && (
-          <img src={currentQuestion.imageUrl} alt="Question" className={styles.questionImage} />
+          <img src={currentQuestion.imageUrl.startsWith('/') ? `${API_URL.replace('/api', '')}${currentQuestion.imageUrl}` : currentQuestion.imageUrl} alt="Question" className={styles.questionImage} />
         )}
 
         <div className={styles.questionNumber}>Câu {currentIndex + 1}</div>

@@ -176,17 +176,44 @@ router.get('/jobs/:jobId/quiz', (req, res) => {
     if (!job.questions || job.questions.length === 0) {
         return res.status(404).json({ error: 'No questions extracted yet' });
     }
+    // Add page image URLs for questions with page numbers
+    const questions = job.questions.map(q => ({
+        ...q,
+        imageUrl: q.pageNumber ? `/api/pdf/jobs/${req.params.jobId}/page/${q.pageNumber}` : q.imageUrl
+    }));
     res.json({
         id: `job-${job.id}`,
         title: job.meta?.title || 'Đang xử lý...',
         filename: job.meta?.originalName || '',
         subject: job.meta?.subject || 'other',
         grade: job.meta?.grade || '2',
-        questions: job.questions,
-        questionCount: job.questions.length,
+        questions,
+        questionCount: questions.length,
         status: job.status,
         isLive: job.status === 'processing',
     });
+});
+
+// Serve page image from a job's file images directory
+router.get('/jobs/:jobId/page/:pageNum', (req, res) => {
+    const job = getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    const fileId = job.meta?.fileId;
+    if (!fileId) return res.status(404).json({ error: 'No file ID' });
+
+    const pageNum = parseInt(req.params.pageNum);
+    const imagesDir = path.join('uploads', 'images', fileId);
+
+    // Look for the page image file (pdftoppm generates page-01.jpg, page-02.jpg, etc.)
+    const files = fs.existsSync(imagesDir) ? fs.readdirSync(imagesDir).filter(f => f.startsWith('page') && (f.endsWith('.jpg') || f.endsWith('.jpeg'))).sort() : [];
+    const targetFile = files[pageNum - 1];
+    if (!targetFile) return res.status(404).json({ error: 'Page image not found' });
+
+    const imgPath = path.join(imagesDir, targetFile);
+    if (!fs.existsSync(imgPath)) return res.status(404).json({ error: 'Page image file missing' });
+
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=3600' });
+    res.sendFile(path.resolve(imgPath));
 });
 
 // Resume a stopped/failed job
@@ -271,17 +298,25 @@ router.post('/resume/:jobId', isAuthenticated, isAdmin, async (req, res) => {
 // Get quiz by ID (Public - for taking quiz)
 router.get('/:id', async (req, res) => {
     const { id } = req.params;
-    
+
     // Try database first
     if (process.env.DATABASE_URL) {
         const exam = await getExamById(id);
         if (exam) {
             const quiz = exam.questions;
             quiz.id = exam.id;
+            // Add page image URLs for questions that have page numbers
+            if (quiz.questions) {
+                quiz.questions.forEach(q => {
+                    if (q.pageNumber) {
+                        q.imageUrl = `/api/pdf/${exam.id}/page/${q.pageNumber}`;
+                    }
+                });
+            }
             return res.json(quiz);
         }
     }
-    
+
     res.status(404).json({ error: 'Quiz not found' });
 });
 

@@ -271,7 +271,7 @@ class PDFParser {
                 await new Promise(r => setTimeout(r, 1500));
             }
 
-            const questions = await this.extractQuestionsFromImages(batch, templateId);
+            const questions = await this.extractQuestionsFromImages(batch, templateId, pagesFrom);
             allQuestions.push(...questions);
             if (questions.length === 0) {
                 console.warn(`  ⚠️ Batch ${batchNum} returned 0 questions from pages ${pagesFrom}-${pagesTo}`);
@@ -294,9 +294,8 @@ class PDFParser {
             });
         }
 
-        try {
-            imageFiles.forEach(f => fs.unlinkSync(f));
-        } catch (_) { /* ignore cleanup errors */ }
+        // Keep page images for quiz viewer (cleaned up by auto-cleanup or generatePageImages)
+        // Don't delete: imageFiles.forEach(f => fs.unlinkSync(f));
 
         const seen = new Set();
         const deduped = allQuestions.filter(q => {
@@ -309,7 +308,7 @@ class PDFParser {
         return deduped;
     }
 
-    async extractQuestionsFromImages(imagePaths, templateId = null) {
+    async extractQuestionsFromImages(imagePaths, templateId = null, pageOffset = 0) {
         // Step 1: OCR with retry
         const base64Images = imagePaths.map(p => fs.readFileSync(p).toString('base64'));
         let raw = null;
@@ -341,7 +340,7 @@ class PDFParser {
         const provider = await aiService.resolveAnalyzeProvider();
         const analyzed = await aiService.analyzeExtractedQuestions(raw, provider);
 
-        return this._normalizeOcrResponse(analyzed);
+        return this._normalizeOcrResponse(analyzed, pageOffset);
     }
 
     /**
@@ -351,14 +350,22 @@ class PDFParser {
      *   B) Raw OCR (nested): [{ de_so, questions:[{ cau, dap_an, giai_thich }] }]
      *   C) Analyzed (flat): [{ de_so, cau, type, interactive, correct, options, giai_thich }]
      */
-    _normalizeOcrResponse(raw) {
+    /**
+     * @param {number} pageOffset - absolute page number of the first image in this batch (1-based), 0 = no page info
+     */
+    _normalizeOcrResponse(raw, pageOffset = 0) {
         if (!Array.isArray(raw) || raw.length === 0) return [];
 
         const first = raw[0];
 
+        // Compute absolute page number from AI's batch-relative "page" field
+        const absPage = (q) => {
+            if (!pageOffset || !q.page) return null;
+            return pageOffset + (q.page - 1); // page=1 within batch → absolute page
+        };
+
         // Format C: flat analyzed output (has cau + type at top level, no nested questions array)
         if (first && first.cau !== undefined && first.type !== undefined && !first.questions) {
-            // Use continuous global numbering (1, 2, 3, ...) across all exam sets
             return raw.map((q, i) => ({
                 id: uuidv4(),
                 number: i + 1,
@@ -370,6 +377,8 @@ class PDFParser {
                 correctAnswer: q.correct || q.dap_an || null,
                 type: q.type || 'reading',
                 interactive: q.interactive !== false,
+                pageNumber: absPage(q),
+                hasImage: q.has_image === true,
                 imageUrl: null
             }));
         }
@@ -392,6 +401,8 @@ class PDFParser {
                         correctAnswer: q.dap_an || null,
                         type: q.type || 'reading',
                         interactive: (q.options || []).length > 0,
+                        pageNumber: absPage(q),
+                        hasImage: q.has_image === true,
                         imageUrl: null
                     });
                     globalIndex++;
@@ -411,6 +422,8 @@ class PDFParser {
             correctAnswer: null,
             type: q.type === 'listening' ? 'listening' : 'reading',
             interactive: (q.options || []).length > 0,
+            pageNumber: null,
+            hasImage: false,
             imageUrl: null
         }));
     }
