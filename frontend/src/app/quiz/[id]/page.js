@@ -18,7 +18,7 @@ export default function QuizPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [finished, setFinished] = useState(false);
-  const [aiProvider, setAiProvider] = useState('openai');
+  const [aiProvider, setAiProvider] = useState('alibaba');
   const [fillInput, setFillInput] = useState('');      // temp input for fill_blank
 
   useEffect(() => { fetchQuiz(); }, [params.id]);
@@ -183,9 +183,9 @@ export default function QuizPage() {
       {/* AI provider selector */}
       <div className={styles.providerRow}>
         <span>🤖 Giải thích bởi:</span>
-        {['openai', 'kimi', 'gemini'].map(p => (
+        {['alibaba', 'openai', 'kimi', 'gemini'].map(p => (
           <button key={p} className={`${styles.providerBtn} ${aiProvider === p ? styles.providerActive : ''}`} onClick={() => setAiProvider(p)}>
-            {p === 'openai' ? 'GPT-4o' : p === 'kimi' ? 'Kimi K2' : 'Gemini'}
+            {p === 'alibaba' ? 'Qwen' : p === 'openai' ? 'GPT-4o' : p === 'kimi' ? 'Kimi K2' : 'Gemini'}
           </button>
         ))}
       </div>

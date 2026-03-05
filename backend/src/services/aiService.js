@@ -161,7 +161,7 @@ class AIService {
         const cfg = {
             openai:  { envKey: 'OPENAI_API_KEY',   baseURL: undefined,                               defaultModel: 'gpt-4o-mini',         visionModel: 'gpt-4o'             },
             kimi:    { envKey: 'KIMI_API_KEY',      baseURL: 'https://api.moonshot.cn/v1',            defaultModel: 'kimi-k2-0711-preview', visionModel: null                  },
-            alibaba: { envKey: 'ALIBABA_API_KEY',   baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen3.5-122b-a10b', visionModel: 'qwen-vl-ocr-2025-11-20' },
+            alibaba: { envKey: 'ALIBABA_API_KEY',   baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen3.5-122b-a10b', visionModel: 'qwen2.5-vl-72b-instruct' },
             gemini:  { envKey: 'GEMINI_API_KEY',    baseURL: undefined,                               defaultModel: 'gemini-1.5-flash',     visionModel: 'gemini-1.5-flash'   },
         };
 
@@ -181,10 +181,10 @@ class AIService {
 
     _modelConfig(provider) {
         const map = {
-            openai:  { text: 'gpt-4o-mini',          vision: 'gpt-4o'          },
-            kimi:    { text: 'kimi-k2-0711-preview',  vision: null              },
-            alibaba: { text: 'qwen3.5-122b-a10b',      vision: 'qwen2.5-vl-72b-instruct' },
-            gemini:  { text: 'gemini-1.5-flash',      vision: 'gemini-1.5-flash'},
+            openai:  { text: 'gpt-4o-mini',          vision: 'gpt-4o',                   reasoning: 'gpt-4o'              },
+            kimi:    { text: 'kimi-k2-0711-preview',  vision: null,                        reasoning: 'kimi-k2-0711-preview'},
+            alibaba: { text: 'qwen3.5-122b-a10b',    vision: 'qwen2.5-vl-72b-instruct',  reasoning: 'qwq-plus'           },
+            gemini:  { text: 'gemini-1.5-flash',      vision: 'gemini-1.5-flash',          reasoning: 'gemini-1.5-flash'   },
         };
         return map[provider] || map.openai;
     }
@@ -213,11 +213,12 @@ class AIService {
             const pref = await getApiKey('answer_provider');
             if (pref && pref !== 'auto') return pref;
         } catch { /* ignore */ }
-        for (const p of ['openai', 'alibaba', 'kimi', 'gemini']) {
+        // Default: prefer alibaba, then openai
+        for (const p of ['alibaba', 'openai', 'kimi', 'gemini']) {
             const client = await this._client(p);
             if (client) return p;
         }
-        return 'openai';
+        return 'alibaba';
     }
 
     async resolveAnalyzeProvider() {
@@ -225,12 +226,12 @@ class AIService {
             const pref = await getApiKey('analyze_provider');
             if (pref && pref !== 'auto') return pref;
         } catch { /* ignore */ }
-        // Default: prefer openai (smarter for analysis), then alibaba
-        for (const p of ['openai', 'alibaba', 'gemini', 'kimi']) {
+        // Default: prefer alibaba (qwq-plus reasoning model), then openai
+        for (const p of ['alibaba', 'openai', 'gemini', 'kimi']) {
             const client = await this._client(p);
             if (client) return p;
         }
-        return 'openai';
+        return 'alibaba';
     }
 
     /**
@@ -245,7 +246,7 @@ class AIService {
         const client = await this._client(p);
         if (!client) { console.warn(`⚠️ No API key for analyze provider: ${p}`); return rawOcrData; }
 
-        const model = this._modelConfig(p).text;
+        const model = this._modelConfig(p).reasoning || this._modelConfig(p).text;
         const start = Date.now();
         this._log('🧠📡', p, model, null, 'Analyzing question types...');
 
@@ -423,6 +424,7 @@ FORMAT OUTPUT:
      */
     _extractJsonArray(content) {
         let cleaned = content
+            .replace(/<think>[\s\S]*?<\/think>/g, '')   // strip QwQ reasoning tags
             .replace(/^```(?:json)?\s*\n?/i, '')
             .replace(/\n?```\s*$/i, '')
             .trim();
@@ -464,11 +466,21 @@ FORMAT OUTPUT:
     }
 
     _buildExplainPrompt(question, selectedAnswer) {
-        return `Hãy giải thích câu hỏi tiếng Anh sau và cho biết đáp án đúng:
+        const hasOptions = question.options && question.options.length > 0;
+        const optionsText = hasOptions
+            ? `Các lựa chọn: ${question.options.map(o => `${o.letter}. ${o.text}`).join(', ')}`
+            : '(Câu hỏi tự luận / điền đáp án)';
+        const answerText = selectedAnswer
+            ? (selectedAnswer.letter !== '-' ? `${selectedAnswer.letter}. ${selectedAnswer.text}` : selectedAnswer.text)
+            : 'Chưa trả lời';
+        const correctText = question.correctAnswer ? `Đáp án đúng: ${question.correctAnswer}` : '';
+
+        return `Hãy giải thích câu hỏi sau và cho biết đáp án đúng:
 
 Câu hỏi: ${question.text}
-Các lựa chọn: ${question.options.map(o => `${o.letter}. ${o.text}`).join(', ')}
-Đáp án đã chọn: ${selectedAnswer ? `${selectedAnswer.letter}. ${selectedAnswer.text}` : 'Chưa chọn'}
+${optionsText}
+Đáp án đã chọn: ${answerText}
+${correctText}
 
 Giải thích ngắn gọn bằng tiếng Việt (học sinh tiểu học có thể hiểu):
 1. Đáp án đúng là gì?
@@ -492,7 +504,9 @@ Giải thích ngắn gọn bằng tiếng Việt (học sinh tiểu học có th
                 ],
                 max_tokens: 500, temperature: 0.7
             });
-            const content = res.choices[0].message.content;
+            let content = res.choices[0].message.content;
+            // Strip QwQ <think> reasoning tags if present
+            content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
             this._log('✅', provider, model, Date.now() - start, content);
             return { explanation: content, provider, model };
         } catch (err) {
