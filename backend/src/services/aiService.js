@@ -333,12 +333,16 @@ FORMAT OUTPUT:
                     { role: 'system', content: 'Bạn là chuyên gia phân tích đề thi. Chỉ trả về JSON array.' },
                     { role: 'user', content: prompt }
                 ],
-                max_tokens: 8192,
+                max_tokens: 16384,
                 temperature: 0
             });
             let content = response.choices[0].message.content.trim();
+            const finishReason = response.choices[0].finish_reason;
             content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-            this._log('🧠✅', p, model, Date.now() - start, content);
+            this._log('🧠✅', p, model, Date.now() - start, `finish=${finishReason} len=${content.length}`);
+            if (finishReason === 'length') {
+                console.warn(`⚠️ Analyze response truncated — some questions may be lost`);
+            }
             return this._extractJsonArray(content);
         } catch (err) {
             this._log('🧠❌', p, model, Date.now() - start, err.message);
@@ -390,12 +394,13 @@ FORMAT OUTPUT:
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: `Trích xuất tất cả câu hỏi và đáp án từ nội dung sau:\n\n${text}` }
                 ],
-                max_tokens: 8192,
+                max_tokens: 16384,
                 temperature: 0
             });
 
             const content = response.choices[0].message.content.trim();
-            this._log('✅', p, model, Date.now() - start, content);
+            const finishReason = response.choices[0].finish_reason;
+            this._log('✅', p, model, Date.now() - start, `finish=${finishReason} len=${content.length}`);
             return this._extractJsonArray(content);
         } catch (err) {
             this._log('❌', p, model, Date.now() - start, err.message);
@@ -440,16 +445,24 @@ FORMAT OUTPUT:
                         ]
                     }
                 ],
-                max_tokens: 8192,
+                max_tokens: 16384,
                 temperature: 0
             });
 
             const content = response.choices[0].message.content.trim();
-            this._log('✅👁️', p, visionModel, Date.now() - start, content);
-            return this._extractJsonArray(content);
+            const finishReason = response.choices[0].finish_reason;
+            this._log('✅👁️', p, visionModel, Date.now() - start, `finish=${finishReason} len=${content.length}`);
+            if (finishReason === 'length') {
+                console.warn(`⚠️ Vision OCR response truncated (${content.length} chars) — may lose questions`);
+            }
+            const result = this._extractJsonArray(content);
+            if (result.length === 0 && content.length > 50) {
+                console.warn(`⚠️ Vision OCR returned content but JSON parse failed. First 200 chars: ${content.slice(0, 200)}`);
+            }
+            return result;
         } catch (err) {
             this._log('❌👁️', p, visionModel, Date.now() - start, err.message);
-            return [];
+            throw err; // propagate error so caller can retry
         }
     }
 

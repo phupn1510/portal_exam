@@ -265,8 +265,17 @@ class PDFParser {
 
             const batch = imageFiles.slice(i, i + batchSize);
             console.log(`  OCR batch ${batchNum}: pages ${pagesFrom}-${pagesTo}`);
+
+            // Add delay between batches to avoid rate limiting (skip for first batch)
+            if (batchNum > 1 + startBatchIndex) {
+                await new Promise(r => setTimeout(r, 1500));
+            }
+
             const questions = await this.extractQuestionsFromImages(batch, templateId);
             allQuestions.push(...questions);
+            if (questions.length === 0) {
+                console.warn(`  ⚠️ Batch ${batchNum} returned 0 questions from pages ${pagesFrom}-${pagesTo}`);
+            }
 
             const batchInfo = { batch: batchNum, totalBatches, pages: `${pagesFrom}–${pagesTo}`, questionCount: questions.length, questions };
             batches.push(batchInfo);
@@ -301,10 +310,32 @@ class PDFParser {
     }
 
     async extractQuestionsFromImages(imagePaths, templateId = null) {
-        // Step 1: OCR
+        // Step 1: OCR with retry
         const base64Images = imagePaths.map(p => fs.readFileSync(p).toString('base64'));
-        const raw = await aiService.parseQuestionsFromImages(base64Images, null, templateId);
-        if (!raw || raw.length === 0) return [];
+        let raw = null;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                raw = await aiService.parseQuestionsFromImages(base64Images, null, templateId);
+                if (raw && raw.length > 0) break;
+                console.warn(`  OCR attempt ${attempt}: returned ${raw?.length || 0} questions`);
+            } catch (err) {
+                lastError = err;
+                console.warn(`  OCR attempt ${attempt} failed: ${err.message}`);
+            }
+            // Wait before retry (exponential backoff)
+            if (attempt < 3) {
+                const delay = attempt * 2000;
+                console.log(`  Retrying in ${delay}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+
+        if (!raw || raw.length === 0) {
+            console.warn(`  OCR failed after 3 attempts: ${lastError?.message || 'empty result'}`);
+            return [];
+        }
 
         // Step 2: Analyze (run once per batch, not per page)
         const provider = await aiService.resolveAnalyzeProvider();
