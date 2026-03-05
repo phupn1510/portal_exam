@@ -183,7 +183,7 @@ class AIService {
         const map = {
             openai:  { text: 'gpt-4o-mini',          vision: 'gpt-4o'          },
             kimi:    { text: 'kimi-k2-0711-preview',  vision: null              },
-            alibaba: { text: 'qwen3.5-122b-a10b',      vision: 'qwen-vl-ocr-2025-11-20' },
+            alibaba: { text: 'qwen3.5-122b-a10b',      vision: 'qwen2.5-vl-72b-instruct' },
             gemini:  { text: 'gemini-1.5-flash',      vision: 'gemini-1.5-flash'},
         };
         return map[provider] || map.openai;

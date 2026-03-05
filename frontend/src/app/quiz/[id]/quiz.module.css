@@ -222,4 +222,95 @@
   border-radius: 99px; transition: width 1s ease;
 }
 
+/* ── Type badge ──────────────────────────────────────────────── */
+.typeBadge {
+  display: inline-block;
+  background: #EEF2F9;
+  color: #4a5568;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+/* ── Correct / wrong highlights (after submit) ───────────────── */
+.correctOption {
+  background: #d4edda !important;
+  border-color: #28a745 !important;
+}
+.correctOption .optionLetter {
+  background: #28a745 !important;
+  color: white !important;
+}
+.wrongOption {
+  background: #f8d7da !important;
+  border-color: #dc3545 !important;
+}
+.wrongOption .optionLetter {
+  background: #dc3545 !important;
+  color: white !important;
+}
+.correctAnswerInfo {
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #d4edda;
+  border-radius: 10px;
+  color: #155724;
+  font-size: 0.95rem;
+}
+.correctText { color: #28a745; font-weight: 700; margin-left: 8px; }
+.wrongText   { color: #dc3545; font-weight: 700; margin-left: 8px; }
+
+/* ── Fill-blank input ────────────────────────────────────────── */
+.fillBlank { margin-top: 8px; }
+.fillInputRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.fillInput {
+  flex: 1;
+  padding: 14px 18px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  color: #2C3E50;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.fillInput:focus { border-color: #4ECDC4; }
+.fillSubmitBtn {
+  padding: 14px 24px;
+  border: none;
+  border-radius: 12px;
+  background: #4ECDC4;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.fillSubmitBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+.fillAnswer {
+  padding: 14px 18px;
+  background: #EEF2F9;
+  border-radius: 12px;
+  font-size: 1.05rem;
+  color: #2C3E50;
+}
+
+/* ── Explanation loading ─────────────────────────────────────── */
+.explanationLoading {
+  margin-top: 16px;
+  padding: 14px;
+  text-align: center;
+  color: #888;
+  font-size: 0.95rem;
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .loading, .error { text-align: center; padding: 60px; color: white; font-size: 1.2rem; }
