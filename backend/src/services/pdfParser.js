@@ -62,7 +62,7 @@ class PDFParser {
         return chunks.length > 0 ? chunks : [text];
     }
 
-    async parsePDF(filePath, fileId, onProgress = null, templateId = null) {
+    async parsePDF(filePath, fileId, onProgress = null, templateId = null, customPrompt = null) {
         try {
             const fileImagesDir = path.join(this.imagesDir, fileId);
             if (!fs.existsSync(fileImagesDir)) {
@@ -88,7 +88,7 @@ class PDFParser {
                 const provider = await aiService.resolveOcrProvider();
                 console.log(`Strategy: AI text parsing [provider=${provider}]`);
                 onProgress?.({ progress: 10, total: 100, message: `🤖 PDF có văn bản — đang phân tích bằng AI (${provider})...` });
-                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress, templateId);
+                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress, templateId, customPrompt);
             } else {
                 // Image-based PDF (scanned) → Vision OCR
                 const provider = await aiService.resolveOcrProvider();
@@ -141,7 +141,7 @@ class PDFParser {
 
     // ─── AI Text Parsing ──────────────────────────────────────────────────────
 
-    async parseWithAIText(text, numPages, onProgress, templateId = null) {
+    async parseWithAIText(text, numPages, onProgress, templateId = null, customPrompt = null) {
         // Pre-clean text to remove watermarks, ads, noise
         const cleaned = this._cleanExtractedText(text);
         console.log(`Text after cleaning: ${cleaned.length} chars (was ${text.length})`);
@@ -156,7 +156,7 @@ class PDFParser {
             const pct = Math.round(10 + ((i + 1) / chunks.length) * 85);
             onProgress?.({ progress: pct, total: 100, message: `🤖 Phân tích đoạn văn bản ${i + 1}/${chunks.length}...` });
             console.log(`  Parsing text chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)...`);
-            const questions = await this.extractQuestionsFromText(chunks[i], templateId);
+            const questions = await this.extractQuestionsFromText(chunks[i], templateId, customPrompt);
             allQuestions.push(...questions);
         }
 
@@ -173,9 +173,9 @@ class PDFParser {
         return deduped;
     }
 
-    async extractQuestionsFromText(text, templateId = null) {
+    async extractQuestionsFromText(text, templateId = null, customPrompt = null) {
         // Step 1: OCR — extract raw data
-        const raw = await aiService.parseQuestionsFromText(text, null, templateId);
+        const raw = await aiService.parseQuestionsFromText(text, null, templateId, customPrompt);
         if (!raw || raw.length === 0) return [];
 
         // Step 2: Analyze — classify types, verify, mark interactive

@@ -23,6 +23,8 @@ function HomeContent() {
   const [uploadTags, setUploadTags] = useState("");
   const [uploadTemplate, setUploadTemplate] = useState("generic");
   const [templates, setTemplates] = useState([]);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState("");
   const [uploadJob, setUploadJob] = useState(null);
   const [toast, setToast] = useState(null);
   // Guest session
@@ -114,6 +116,17 @@ function HomeContent() {
     } catch { console.error("Logout error"); }
   };
 
+  const getTemplatePrompt = (id) => {
+    const tpl = templates.find(t => t.id === id);
+    return tpl?.promptText || "";
+  };
+
+  const handleTemplateChange = (id) => {
+    setUploadTemplate(id);
+    setEditedPrompt(getTemplatePrompt(id));
+    setShowPrompt(false);
+  };
+
   const handleFileUpload = async (file) => {
     if (!file || file.type !== "application/pdf") return showToast("Vui lòng chọn file PDF", "error");
     if (!user || user.role !== "admin") return showToast("Cần tài khoản admin để tải lên", "error");
@@ -128,6 +141,11 @@ function HomeContent() {
     formData.append("tags", uploadTags);
     if (uploadTemplate && uploadTemplate !== "generic") {
       formData.append("promptTemplate", uploadTemplate);
+    }
+    // Send edited prompt if user modified it
+    const originalPrompt = getTemplatePrompt(uploadTemplate);
+    if (editedPrompt && editedPrompt !== originalPrompt) {
+      formData.append("customPrompt", editedPrompt);
     }
 
     try {
@@ -283,7 +301,7 @@ function HomeContent() {
                 <select value={uploadGrade} onChange={e => setUploadGrade(e.target.value)} className={styles.select}>
                   {[1,2,3,4,5,6,7,8,9,10,11,12].map(g => <option key={g} value={String(g)}>Lớp {g}</option>)}
                 </select>
-                <select value={uploadTemplate} onChange={e => setUploadTemplate(e.target.value)} className={styles.select} title="Chọn prompt template cho OCR">
+                <select value={uploadTemplate} onChange={e => handleTemplateChange(e.target.value)} className={styles.select} title="Chọn prompt template cho OCR">
                   {templates.length > 0 ? templates.map(t => (
                     <option key={t.id} value={t.id}>{t.name}</option>
                   )) : (
@@ -294,7 +312,28 @@ function HomeContent() {
                     </>
                   )}
                 </select>
+                <button type="button" onClick={() => { if (!showPrompt) setEditedPrompt(getTemplatePrompt(uploadTemplate)); setShowPrompt(!showPrompt); }} className={styles.select} style={{ cursor: "pointer", background: showPrompt ? "#e0e7ff" : "#fff" }}>
+                  {showPrompt ? "Ẩn prompt" : "Xem/Sửa prompt"}
+                </button>
               </div>
+              {showPrompt && (
+                <div style={{ marginTop: 8 }}>
+                  <textarea
+                    value={editedPrompt}
+                    onChange={e => setEditedPrompt(e.target.value)}
+                    style={{ width: "100%", minHeight: 200, fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 8, border: "1px solid #d1d5db", resize: "vertical" }}
+                    placeholder="Prompt OCR sẽ gửi tới AI..."
+                  />
+                  {editedPrompt !== getTemplatePrompt(uploadTemplate) && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                      <span style={{ color: "#f59e0b", fontSize: 12 }}>Prompt đã được chỉnh sửa</span>
+                      <button type="button" onClick={() => setEditedPrompt(getTemplatePrompt(uploadTemplate))} style={{ fontSize: 12, color: "#6366f1", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+                        Reset về mặc định
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

@@ -27,9 +27,10 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         return res.status(400).json({ error: 'No PDF file uploaded' });
     }
 
-    const { subject, title, grade, tags: tagsRaw, promptTemplate } = req.body;
+    const { subject, title, grade, tags: tagsRaw, promptTemplate, customPrompt } = req.body;
     const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
     const templateId = promptTemplate && PROMPT_TEMPLATES[promptTemplate] ? promptTemplate : null;
+    const userPrompt = customPrompt?.trim() || null;
     const fileId = uuidv4();
     const jobId = uuidv4();
     const filePath = req.file.path;
@@ -55,7 +56,7 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     } catch { /* keep original if decode fails */ }
 
-    console.log(`Processing PDF: ${originalName} (${fileId}) hash=${fileHash.slice(0,12)}... template=${templateId || 'default'}`);
+    console.log(`Processing PDF: ${originalName} (${fileId}) hash=${fileHash.slice(0,12)}... template=${templateId || 'default'} customPrompt=${userPrompt ? 'yes' : 'no'}`);
 
     createJob(jobId);
     res.json({ success: true, jobId, status: 'processing' });
@@ -65,7 +66,7 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         try {
             const result = await pdfParser.parsePDF(filePath, fileId, (progress) => {
                 updateJob(jobId, progress);
-            }, templateId);
+            }, templateId, userPrompt);
 
             if (!result.success) {
                 updateJob(jobId, { status: 'error', error: result.error || 'Parsing failed' });
@@ -206,12 +207,14 @@ router.get('/:id/page/:pageNum', async (req, res) => {
     res.send(buffer);
 });
 
-// Get prompt templates list
+// Get prompt templates list (includes prompt text for preview/edit)
 router.get('/meta/templates', (req, res) => {
     const list = Object.values(PROMPT_TEMPLATES).map(t => ({
         id: t.id,
         name: t.name,
-        description: t.description
+        description: t.description,
+        promptText: t.text || '',
+        promptVision: t.vision || ''
     }));
     res.json(list);
 });
