@@ -1,6 +1,7 @@
 import express from 'express';
 import { isAuthenticated } from '../services/authService.js';
 import { getAdminEmails, addAdminEmail, removeAdminEmail, getApiKey, setApiKey, getSetting, setSetting } from '../services/database.js';
+import aiService from '../services/aiService.js';
 
 const router = express.Router();
 const OWNER_EMAIL = 'phupn1510@gmail.com';
@@ -28,7 +29,15 @@ router.get('/settings', isOwner, async (req, res) => {
         const analyzeProvider = await getApiKey('analyze_provider') || 'auto';
         let ocrTextPrompt = null;
         try { ocrTextPrompt = await getSetting('ocr_text_prompt'); } catch { /* ignore */ }
-        res.json({ adminEmails: emails, apiKeys: keys, ownerEmail: OWNER_EMAIL, ocrProvider, answerProvider, analyzeProvider, ocrTextPrompt });
+        const models = await aiService.getModelSettings();
+        // Also include the default model names per provider for display
+        const defaultModels = {
+            openai:  { ocr_text: 'gpt-4o-mini', ocr_vision: 'gpt-4o', analyze: 'gpt-4o', answer: 'gpt-4o-mini' },
+            alibaba: { ocr_text: 'qwen-plus', ocr_vision: 'qwen-vl-max', analyze: 'qwq-plus', answer: 'qwen-plus' },
+            kimi:    { ocr_text: 'kimi-k2-0711-preview', ocr_vision: null, analyze: 'kimi-k2-0711-preview', answer: 'kimi-k2-0711-preview' },
+            gemini:  { ocr_text: 'gemini-1.5-flash', ocr_vision: 'gemini-1.5-flash', analyze: 'gemini-1.5-flash', answer: 'gemini-1.5-flash' },
+        };
+        res.json({ adminEmails: emails, apiKeys: keys, ownerEmail: OWNER_EMAIL, ocrProvider, answerProvider, analyzeProvider, ocrTextPrompt, models, defaultModels });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -122,6 +131,25 @@ router.get('/ocr-prompt', isOwner, async (req, res) => {
     let prompt = null;
     try { prompt = await getSetting('ocr_text_prompt'); } catch { /* ignore */ }
     res.json({ ocrTextPrompt: prompt });
+});
+
+// GET /api/admin/models — get all model overrides
+router.get('/models', isOwner, async (req, res) => {
+    const models = await aiService.getModelSettings();
+    res.json({ models });
+});
+
+// POST /api/admin/models — save model override for a step
+router.post('/models', isOwner, async (req, res) => {
+    const { step, model } = req.body;
+    const allowed = ['ocr_text', 'ocr_vision', 'analyze', 'answer'];
+    if (!allowed.includes(step)) return res.status(400).json({ error: 'Invalid step' });
+    try {
+        await setSetting(`model_${step}`, (model || '').trim());
+        res.json({ success: true, step, model: (model || '').trim() });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // POST /api/admin/ocr-prompt — save custom OCR prompt template

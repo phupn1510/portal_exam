@@ -161,7 +161,7 @@ class AIService {
         const cfg = {
             openai:  { envKey: 'OPENAI_API_KEY',   baseURL: undefined,                               defaultModel: 'gpt-4o-mini',         visionModel: 'gpt-4o'             },
             kimi:    { envKey: 'KIMI_API_KEY',      baseURL: 'https://api.moonshot.cn/v1',            defaultModel: 'kimi-k2-0711-preview', visionModel: null                  },
-            alibaba: { envKey: 'ALIBABA_API_KEY',   baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen3.5-122b-a10b', visionModel: 'qwen2.5-vl-72b-instruct' },
+            alibaba: { envKey: 'ALIBABA_API_KEY',   baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-plus', visionModel: 'qwen-vl-max' },
             gemini:  { envKey: 'GEMINI_API_KEY',    baseURL: undefined,                               defaultModel: 'gemini-1.5-flash',     visionModel: 'gemini-1.5-flash'   },
         };
 
@@ -181,12 +181,46 @@ class AIService {
 
     _modelConfig(provider) {
         const map = {
-            openai:  { text: 'gpt-4o-mini',          vision: 'gpt-4o',                   reasoning: 'gpt-4o'              },
-            kimi:    { text: 'kimi-k2-0711-preview',  vision: null,                        reasoning: 'kimi-k2-0711-preview'},
-            alibaba: { text: 'qwen3.5-122b-a10b',    vision: 'qwen2.5-vl-72b-instruct',  reasoning: 'qwq-plus'           },
-            gemini:  { text: 'gemini-1.5-flash',      vision: 'gemini-1.5-flash',          reasoning: 'gemini-1.5-flash'   },
+            openai:  { text: 'gpt-4o-mini',          vision: 'gpt-4o',          reasoning: 'gpt-4o'              },
+            kimi:    { text: 'kimi-k2-0711-preview',  vision: null,              reasoning: 'kimi-k2-0711-preview'},
+            alibaba: { text: 'qwen-plus',             vision: 'qwen-vl-max',    reasoning: 'qwq-plus'           },
+            gemini:  { text: 'gemini-1.5-flash',      vision: 'gemini-1.5-flash',reasoning: 'gemini-1.5-flash'   },
         };
         return map[provider] || map.openai;
+    }
+
+    /**
+     * Resolve model name for a given step. Priority: DB override > provider default.
+     * Steps: 'ocr_text', 'ocr_vision', 'analyze', 'answer'
+     */
+    async _resolveModel(step, provider) {
+        try {
+            const dbModel = await getSetting(`model_${step}`);
+            if (dbModel && dbModel.trim()) {
+                return dbModel.trim();
+            }
+        } catch { /* ignore */ }
+
+        const cfg = this._modelConfig(provider);
+        const fallback = {
+            ocr_text:   cfg.text,
+            ocr_vision: cfg.vision,
+            analyze:    cfg.reasoning || cfg.text,
+            answer:     cfg.text,
+        };
+        return fallback[step] || cfg.text;
+    }
+
+    /** Get all current model names (for admin display) */
+    async getModelSettings() {
+        const steps = ['ocr_text', 'ocr_vision', 'analyze', 'answer'];
+        const result = {};
+        for (const step of steps) {
+            try {
+                result[step] = await getSetting(`model_${step}`) || '';
+            } catch { result[step] = ''; }
+        }
+        return result;
     }
 
     // ─── Resolve the active OCR provider ─────────────────────────────────────
@@ -246,7 +280,7 @@ class AIService {
         const client = await this._client(p);
         if (!client) { console.warn(`⚠️ No API key for analyze provider: ${p}`); return rawOcrData; }
 
-        const model = this._modelConfig(p).reasoning || this._modelConfig(p).text;
+        const model = await this._resolveModel('analyze', p);
         const start = Date.now();
         this._log('🧠📡', p, model, null, 'Analyzing question types...');
 
@@ -299,10 +333,11 @@ FORMAT OUTPUT:
                     { role: 'system', content: 'Bạn là chuyên gia phân tích đề thi. Chỉ trả về JSON array.' },
                     { role: 'user', content: prompt }
                 ],
-                max_tokens: 16000,
+                max_tokens: 8192,
                 temperature: 0
             });
-            const content = response.choices[0].message.content.trim();
+            let content = response.choices[0].message.content.trim();
+            content = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
             this._log('🧠✅', p, model, Date.now() - start, content);
             return this._extractJsonArray(content);
         } catch (err) {
@@ -342,7 +377,7 @@ FORMAT OUTPUT:
         const client = await this._client(p);
         if (!client) { console.warn(`⚠️ No API key for provider: ${p}`); return []; }
 
-        const model = this._modelConfig(p).text;
+        const model = await this._resolveModel('ocr_text', p);
         const start = Date.now();
         this._log('📡', p, model, null, `template=${templateId || 'default'}`);
 
@@ -355,7 +390,7 @@ FORMAT OUTPUT:
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: `Trích xuất tất cả câu hỏi và đáp án từ nội dung sau:\n\n${text}` }
                 ],
-                max_tokens: 16000,
+                max_tokens: 8192,
                 temperature: 0
             });
 
@@ -372,9 +407,9 @@ FORMAT OUTPUT:
 
     async parseQuestionsFromImages(base64Images, provider = null, templateId = null) {
         const p = provider || await this.resolveOcrProvider();
-        const { vision } = this._modelConfig(p);
+        const visionModel = await this._resolveModel('ocr_vision', p);
 
-        if (!vision) {
+        if (!visionModel) {
             console.warn(`⚠️ Provider ${p} does not support vision — falling back to openai`);
             return this.parseQuestionsFromImages(base64Images, 'openai', templateId);
         }
@@ -383,7 +418,7 @@ FORMAT OUTPUT:
         if (!client) { console.warn(`⚠️ No API key for provider: ${p}`); return []; }
 
         const start = Date.now();
-        this._log('📡👁️', p, vision, null, `template=${templateId || 'default'}`);
+        this._log('📡👁️', p, visionModel, null, `template=${templateId || 'default'}`);
 
         const systemPrompt = await this._resolveVisionPrompt(templateId);
 
@@ -394,7 +429,7 @@ FORMAT OUTPUT:
             }));
 
             const response = await client.chat.completions.create({
-                model: vision,
+                model: visionModel,
                 messages: [
                     { role: 'system', content: systemPrompt },
                     {
@@ -405,15 +440,15 @@ FORMAT OUTPUT:
                         ]
                     }
                 ],
-                max_tokens: 16000,
+                max_tokens: 8192,
                 temperature: 0
             });
 
             const content = response.choices[0].message.content.trim();
-            this._log('✅👁️', p, vision, Date.now() - start, content);
+            this._log('✅👁️', p, visionModel, Date.now() - start, content);
             return this._extractJsonArray(content);
         } catch (err) {
-            this._log('❌👁️', p, vision, Date.now() - start, err.message);
+            this._log('❌👁️', p, visionModel, Date.now() - start, err.message);
             return [];
         }
     }
@@ -491,7 +526,7 @@ Giải thích ngắn gọn bằng tiếng Việt (học sinh tiểu học có th
         const client = await this._client(provider);
         if (!client) return { error: `${provider} not configured`, provider };
 
-        const model = this._modelConfig(provider).text;
+        const model = await this._resolveModel('answer', provider);
         const start = Date.now();
         this._log('📡', provider, model, null, prompt);
 

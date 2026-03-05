@@ -9,33 +9,33 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 const PROVIDERS = ['openai', 'kimi', 'alibaba', 'gemini'];
 const PROVIDER_LABELS = {
-  openai:  'OpenAI (GPT-4o)',
+  openai:  'OpenAI (GPT)',
   kimi:    'Kimi K2 (Moonshot)',
-  alibaba: 'Alibaba Cloud (Qwen)',
+  alibaba: 'Alibaba (Qwen)',
   gemini:  'Google Gemini',
 };
 
 const OCR_OPTIONS = [
-  { value: 'auto',    label: '🤖 Auto (chọn tự động theo key có sẵn)' },
-  { value: 'openai',  label: '🟢 OpenAI — gpt-4o-mini / gpt-4o (vision)' },
-  { value: 'alibaba', label: '🟠 Alibaba Qwen — qwen-max / qwen-vl-max (vision)' },
-  { value: 'kimi',    label: '🔵 Kimi K2 — text only' },
+  { value: 'auto',    label: '🤖 Auto' },
+  { value: 'openai',  label: '🟢 OpenAI' },
+  { value: 'alibaba', label: '🟠 Alibaba Qwen' },
+  { value: 'kimi',    label: '🔵 Kimi K2 (text only)' },
 ];
 
 const ANALYZE_OPTIONS = [
-  { value: 'auto',    label: '🤖 Auto (ưu tiên OpenAI → Alibaba → Gemini)' },
-  { value: 'openai',  label: '🟢 OpenAI GPT-4o-mini — phân tích tốt nhất' },
-  { value: 'alibaba', label: '🟠 Alibaba Qwen-Max — tiết kiệm chi phí' },
-  { value: 'gemini',  label: '🟣 Google Gemini 1.5 Flash — nhanh & rẻ' },
+  { value: 'auto',    label: '🤖 Auto' },
+  { value: 'openai',  label: '🟢 OpenAI' },
+  { value: 'alibaba', label: '🟠 Alibaba Qwen' },
+  { value: 'gemini',  label: '🟣 Gemini' },
   { value: 'kimi',    label: '🔵 Kimi K2' },
 ];
 
 const ANSWER_OPTIONS = [
   { value: 'auto',    label: '🤖 Auto' },
-  { value: 'openai',  label: '🟢 OpenAI GPT-4o-mini' },
-  { value: 'alibaba', label: '🟠 Alibaba Qwen-Max' },
+  { value: 'openai',  label: '🟢 OpenAI' },
+  { value: 'alibaba', label: '🟠 Alibaba Qwen' },
   { value: 'kimi',    label: '🔵 Kimi K2' },
-  { value: 'gemini',  label: '🟣 Google Gemini 1.5 Flash' },
+  { value: 'gemini',  label: '🟣 Gemini' },
 ];
 
 function ProviderRadio({ options, value, onChange, name }) {
@@ -51,12 +51,35 @@ function ProviderRadio({ options, value, onChange, name }) {
   );
 }
 
+function ModelInput({ label, step, value, onChange, onSave, saving, defaultModel }) {
+  return (
+    <div className={styles.modelRow}>
+      <div className={styles.modelLabel}>
+        <strong>{label}</strong>
+        <span className={styles.modelDefault}>mặc định: <code>{defaultModel || '—'}</code></span>
+      </div>
+      <div className={styles.modelInputRow}>
+        <input
+          className={styles.input}
+          placeholder={defaultModel || 'model name...'}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+        />
+        <button className={styles.saveBtn} onClick={() => onSave(step, value)} disabled={saving === step}>
+          {saving === step ? '...' : 'Lưu'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
   const [keyInputs, setKeyInputs] = useState({ openai: '', kimi: '', alibaba: '', gemini: '' });
   const [providers, setProviders] = useState({ ocr: 'auto', analyze: 'auto', answer: 'auto' });
+  const [models, setModels] = useState({ ocr_text: '', ocr_vision: '', analyze: '', answer: '' });
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState('');
   const [ocrPrompt, setOcrPrompt] = useState('');
@@ -73,6 +96,12 @@ export default function AdminPage() {
       const { data } = await axios.get(`${API_URL}/admin/settings`, { withCredentials: true });
       setSettings(data);
       setProviders({ ocr: data.ocrProvider || 'auto', analyze: data.analyzeProvider || 'auto', answer: data.answerProvider || 'auto' });
+      setModels({
+        ocr_text: data.models?.ocr_text || '',
+        ocr_vision: data.models?.ocr_vision || '',
+        analyze: data.models?.analyze || '',
+        answer: data.models?.answer || '',
+      });
       setOcrPrompt(data.ocrTextPrompt || '');
     } catch (err) {
       if (err.response?.status === 403) showToast('Chỉ owner mới truy cập được trang này', 'error');
@@ -84,7 +113,7 @@ export default function AdminPage() {
     try {
       const { data } = await axios.post(`${API_URL}/admin/emails`, { email: newEmail }, { withCredentials: true });
       setSettings(s => ({ ...s, adminEmails: data.adminEmails }));
-      setNewEmail(''); showToast(`✅ Đã thêm ${newEmail}`);
+      setNewEmail(''); showToast(`Đã thêm ${newEmail}`);
     } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
   };
 
@@ -94,7 +123,7 @@ export default function AdminPage() {
     try {
       const { data } = await axios.delete(`${API_URL}/admin/emails/${encodeURIComponent(email)}`, { withCredentials: true });
       setSettings(s => ({ ...s, adminEmails: data.adminEmails }));
-      showToast(`🗑️ Đã xóa ${email}`);
+      showToast(`Đã xóa ${email}`);
     } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
   };
 
@@ -105,7 +134,7 @@ export default function AdminPage() {
     try {
       await axios.post(`${API_URL}/admin/keys`, { provider, key }, { withCredentials: true });
       setKeyInputs(k => ({ ...k, [provider]: '' }));
-      showToast(`✅ Đã lưu API key cho ${PROVIDER_LABELS[provider]}`);
+      showToast(`Đã lưu API key cho ${PROVIDER_LABELS[provider]}`);
       fetchSettings();
     } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
     finally { setSaving(''); }
@@ -115,7 +144,7 @@ export default function AdminPage() {
     setSaving('ocrPrompt');
     try {
       await axios.post(`${API_URL}/admin/ocr-prompt`, { prompt: ocrPrompt }, { withCredentials: true });
-      showToast(ocrPrompt.trim() ? '✅ Đã lưu prompt tùy chỉnh' : '✅ Đã reset về prompt mặc định');
+      showToast(ocrPrompt.trim() ? 'Đã lưu prompt tùy chỉnh' : 'Đã reset về prompt mặc định');
     } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
     finally { setSaving(''); }
   };
@@ -126,9 +155,31 @@ export default function AdminPage() {
     const body = { provider: value };
     try {
       await axios.post(`${API_URL}/admin/${endpoint}`, body, { withCredentials: true });
-      showToast(`✅ ${type} provider → ${value}`);
+      showToast(`${type} provider → ${value}`);
     } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
     finally { setSaving(''); }
+  };
+
+  const saveModel = async (step, model) => {
+    setSaving(step);
+    try {
+      await axios.post(`${API_URL}/admin/models`, { step, model }, { withCredentials: true });
+      showToast(`Model ${step} → ${model || '(mặc định)'}`);
+    } catch (err) { showToast(err.response?.data?.error || 'Lỗi', 'error'); }
+    finally { setSaving(''); }
+  };
+
+  // Get default model for a step based on selected provider
+  const getDefaultModel = (step) => {
+    const providerMap = { ocr_text: 'ocr', ocr_vision: 'ocr', analyze: 'analyze', answer: 'answer' };
+    const p = providers[providerMap[step]] || 'auto';
+    const provider = p === 'auto' ? 'alibaba' : p;
+    return settings?.defaultModels?.[provider]?.[step] || '';
+  };
+
+  // Get active model display (override or default)
+  const getActiveModel = (step) => {
+    return models[step] || getDefaultModel(step);
   };
 
   if (loading) return <div className={styles.loading}>Đang tải...</div>;
@@ -140,33 +191,51 @@ export default function AdminPage() {
 
       <header className={styles.header}>
         <Link href="/" className={styles.back}>← Trang chủ</Link>
-        <h1>⚙️ Admin Settings</h1>
+        <h1>Admin Settings</h1>
         <p>Owner: <strong>{settings.ownerEmail}</strong></p>
       </header>
 
-      {/* Pipeline overview */}
+      {/* Pipeline overview with active models */}
       <section className={styles.card}>
-        <h2>🔄 Pipeline xử lý PDF</h2>
+        <h2>Pipeline xử lý PDF</h2>
         <div className={styles.pipeline}>
           <div className={styles.pipeStep}><span>📄</span><small>PDF</small></div>
           <div className={styles.pipeArrow}>→</div>
-          <div className={styles.pipeStep}><span>🔍</span><small>OCR</small></div>
+          <div className={styles.pipeStep}>
+            <span>🔍</span><small>OCR</small>
+            <code className={styles.pipeModel}>{getActiveModel('ocr_vision')}</code>
+          </div>
           <div className={styles.pipeArrow}>→</div>
-          <div className={styles.pipeStep}><span>🧠</span><small>Analyze</small></div>
+          <div className={styles.pipeStep}>
+            <span>🧠</span><small>Analyze</small>
+            <code className={styles.pipeModel}>{getActiveModel('analyze')}</code>
+          </div>
           <div className={styles.pipeArrow}>→</div>
-          <div className={styles.pipeStep}><span>📝</span><small>Câu hỏi</small></div>
+          <div className={styles.pipeStep}>
+            <span>💬</span><small>Answer</small>
+            <code className={styles.pipeModel}>{getActiveModel('answer')}</code>
+          </div>
         </div>
-        <p className={styles.hint}>Bước 1 (OCR): trích xuất thô | Bước 2 (Analyze): phân loại loại câu hỏi, xác định MCQ/điền chỗ trống, gắn đáp án đúng</p>
       </section>
 
-      {/* OCR Provider */}
+      {/* OCR Provider + Models */}
       <section className={styles.card}>
-        <h2>🔍 Bước 1 — AI Provider cho OCR</h2>
-        <p className={styles.hint}>Trích xuất nội dung thô từ PDF (nhanh, tiết kiệm).</p>
+        <h2>🔍 Bước 1 — OCR (trích xuất từ PDF)</h2>
+        <p className={styles.hint}>Provider:</p>
         <ProviderRadio options={OCR_OPTIONS} value={providers.ocr} onChange={v => setProviders(p => ({ ...p, ocr: v }))} name="ocrProvider" />
         <button className={styles.saveBtn} onClick={() => saveProviderSetting('ocr', providers.ocr)} disabled={saving === 'ocr'}>
-          {saving === 'ocr' ? '...' : '💾 Lưu OCR Provider'}
+          {saving === 'ocr' ? '...' : 'Lưu Provider'}
         </button>
+
+        <div className={styles.modelSection}>
+          <h3>Model tùy chỉnh (để trống = mặc định)</h3>
+          <ModelInput label="OCR Text" step="ocr_text" value={models.ocr_text}
+            onChange={v => setModels(m => ({ ...m, ocr_text: v }))} onSave={saveModel} saving={saving}
+            defaultModel={getDefaultModel('ocr_text')} />
+          <ModelInput label="OCR Vision" step="ocr_vision" value={models.ocr_vision}
+            onChange={v => setModels(m => ({ ...m, ocr_vision: v }))} onSave={saveModel} saving={saving}
+            defaultModel={getDefaultModel('ocr_vision')} />
+        </div>
       </section>
 
       {/* OCR Prompt Template */}
@@ -174,7 +243,7 @@ export default function AdminPage() {
         <h2>📝 Prompt OCR tùy chỉnh</h2>
         <p className={styles.hint}>
           Tùy chỉnh prompt gửi đến AI khi trích xuất đề thi từ PDF.
-          Để trống để dùng prompt mặc định. Prompt phải yêu cầu AI trả về JSON array với format: {`[{"de_so":1,"questions":[{"cau":1,"dap_an":"...","giai_thich":"..."}]}]`}
+          Để trống để dùng prompt mặc định.
         </p>
         <textarea
           className={styles.input}
@@ -185,32 +254,46 @@ export default function AdminPage() {
         />
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <button className={styles.saveBtn} onClick={saveOcrPrompt} disabled={saving === 'ocrPrompt'}>
-            {saving === 'ocrPrompt' ? '...' : '💾 Lưu Prompt'}
+            {saving === 'ocrPrompt' ? '...' : 'Lưu Prompt'}
           </button>
-          <button className={styles.saveBtn} style={{ background: '#999' }} onClick={() => { setOcrPrompt(''); }} disabled={saving === 'ocrPrompt'}>
+          <button className={styles.saveBtn} style={{ background: '#999' }} onClick={() => { setOcrPrompt(''); }}>
             Reset mặc định
           </button>
         </div>
       </section>
 
-      {/* Analyze Provider */}
+      {/* Analyze Provider + Model */}
       <section className={styles.card}>
-        <h2>🧠 Bước 2 — AI Provider cho Analyze</h2>
-        <p className={styles.hint}>Phân tích dữ liệu OCR, phân loại loại câu hỏi (MCQ / điền chỗ trống / Đúng-Sai), xác định đáp án đúng. Nên dùng model thông minh hơn.</p>
+        <h2>🧠 Bước 2 — Analyze (phân loại câu hỏi)</h2>
+        <p className={styles.hint}>Phân loại MCQ / điền chỗ trống / Đúng-Sai, xác định đáp án.</p>
         <ProviderRadio options={ANALYZE_OPTIONS} value={providers.analyze} onChange={v => setProviders(p => ({ ...p, analyze: v }))} name="analyzeProvider" />
         <button className={styles.saveBtn} onClick={() => saveProviderSetting('analyze', providers.analyze)} disabled={saving === 'analyze'}>
-          {saving === 'analyze' ? '...' : '💾 Lưu Analyze Provider'}
+          {saving === 'analyze' ? '...' : 'Lưu Provider'}
         </button>
+
+        <div className={styles.modelSection}>
+          <h3>Model tùy chỉnh</h3>
+          <ModelInput label="Analyze Model" step="analyze" value={models.analyze}
+            onChange={v => setModels(m => ({ ...m, analyze: v }))} onSave={saveModel} saving={saving}
+            defaultModel={getDefaultModel('analyze')} />
+        </div>
       </section>
 
-      {/* Answer Provider */}
+      {/* Answer Provider + Model */}
       <section className={styles.card}>
-        <h2>💬 Bước 3 — AI mặc định cho giải thích đáp án</h2>
+        <h2>💬 Bước 3 — Giải thích đáp án</h2>
         <p className={styles.hint}>Khi học sinh nhấn "Giải thích". Học sinh vẫn có thể đổi từng câu.</p>
         <ProviderRadio options={ANSWER_OPTIONS} value={providers.answer} onChange={v => setProviders(p => ({ ...p, answer: v }))} name="answerProvider" />
         <button className={styles.saveBtn} onClick={() => saveProviderSetting('answer', providers.answer)} disabled={saving === 'answer'}>
-          {saving === 'answer' ? '...' : '💾 Lưu Answer Provider'}
+          {saving === 'answer' ? '...' : 'Lưu Provider'}
         </button>
+
+        <div className={styles.modelSection}>
+          <h3>Model tùy chỉnh</h3>
+          <ModelInput label="Answer Model" step="answer" value={models.answer}
+            onChange={v => setModels(m => ({ ...m, answer: v }))} onSave={saveModel} saving={saving}
+            defaultModel={getDefaultModel('answer')} />
+        </div>
       </section>
 
       {/* Admin Emails */}
@@ -221,7 +304,7 @@ export default function AdminPage() {
             <li key={email} className={styles.emailItem}>
               <span>{email}</span>
               {email === settings.ownerEmail
-                ? <span className={styles.ownerBadge}>👑 Owner</span>
+                ? <span className={styles.ownerBadge}>Owner</span>
                 : <button className={styles.removeBtn} onClick={() => removeEmail(email)}>Xóa</button>}
             </li>
           ))}
@@ -241,10 +324,9 @@ export default function AdminPage() {
             <div className={styles.keyLabel}>
               <strong>{PROVIDER_LABELS[p]}</strong>
               {settings.apiKeys?.[p]
-                ? <span className={styles.keyStatus}>✅ {settings.apiKeys[p]}</span>
-                : <span className={styles.keyMissing}>⚠️ Chưa cấu hình</span>}
+                ? <span className={styles.keyStatus}>{settings.apiKeys[p]}</span>
+                : <span className={styles.keyMissing}>Chưa cấu hình</span>}
             </div>
-            {p === 'alibaba' && <p className={styles.hint} style={{marginBottom:8}}>dashscope-intl.aliyuncs.com · qwen-max / qwen-vl-max</p>}
             <div className={styles.keyInput}>
               <input className={styles.input} type="password" placeholder={`${p.toUpperCase()}_API_KEY...`} value={keyInputs[p]} onChange={e => setKeyInputs(k => ({ ...k, [p]: e.target.value }))} />
               <button className={styles.saveBtn} onClick={() => saveKey(p)} disabled={saving === p}>{saving === p ? '...' : 'Lưu'}</button>

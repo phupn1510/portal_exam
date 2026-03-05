@@ -116,5 +116,28 @@
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 .pipeStep small { font-size: 0.7rem; font-weight: 700; color: #555; margin-top: 2px; }
+.pipeModel {
+  font-size: 0.6rem; color: #667eea; background: #f0f0ff;
+  padding: 2px 6px; border-radius: 4px; margin-top: 4px;
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .pipeArrow { font-size: 1.2rem; color: #4ECDC4; font-weight: 700; }
+
+/* ── Model config section ──────────────────────────────────── */
+.modelSection {
+  margin-top: 20px; padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+.modelSection h3 { font-size: 0.9rem; color: #666; margin-bottom: 12px; }
+.modelRow { margin-bottom: 12px; }
+.modelLabel {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 6px; font-size: 0.9rem;
+}
+.modelDefault { color: #999; font-size: 0.8rem; }
+.modelDefault code {
+  background: #f5f5f5; padding: 2px 6px; border-radius: 4px;
+  font-size: 0.78rem; color: #667eea;
+}
+.modelInputRow { display: flex; gap: 8px; }
 
