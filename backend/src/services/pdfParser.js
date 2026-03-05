@@ -135,14 +135,17 @@ class PDFParser {
             allQuestions.push(...questions);
         }
 
-        // Deduplicate by (deNumber, number) combo
+        // Deduplicate by (deNumber, originalCau) combo, then re-number globally
         const seen = new Set();
-        return allQuestions.filter(q => {
-            const key = `${q.deNumber || 0}-${q.number}`;
+        const deduped = allQuestions.filter(q => {
+            const key = `${q.deNumber || 0}-${q.originalCau ?? q.number}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
         });
+        // Re-assign continuous global numbering after dedup
+        deduped.forEach((q, i) => { q.number = i + 1; });
+        return deduped;
     }
 
     async extractQuestionsFromText(text, templateId = null) {
@@ -215,11 +218,14 @@ class PDFParser {
         } catch (_) { /* ignore cleanup errors */ }
 
         const seen = new Set();
-        return allQuestions.filter(q => {
-            if (seen.has(q.number)) return false;
-            seen.add(q.number);
+        const deduped = allQuestions.filter(q => {
+            const key = `${q.deNumber || 0}-${q.originalCau ?? q.number}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
             return true;
         });
+        deduped.forEach((q, i) => { q.number = i + 1; });
+        return deduped;
     }
 
     async extractQuestionsFromImages(imagePaths, templateId = null) {
@@ -249,10 +255,12 @@ class PDFParser {
 
         // Format C: flat analyzed output (has cau + type at top level, no nested questions array)
         if (first && first.cau !== undefined && first.type !== undefined && !first.questions) {
+            // Use continuous global numbering (1, 2, 3, ...) across all exam sets
             return raw.map((q, i) => ({
                 id: uuidv4(),
-                number: q.cau ?? (i + 1),
+                number: i + 1,
                 deNumber: q.de_so ?? 1,
+                originalCau: q.cau,
                 text: q.noi_dung || q.giai_thich || q.dap_an || '',
                 explanation: q.giai_thich || '',
                 options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
@@ -272,8 +280,9 @@ class PDFParser {
                 for (const q of (de.questions || [])) {
                     result.push({
                         id: uuidv4(),
-                        number: q.cau ?? globalIndex,
+                        number: globalIndex,
                         deNumber: deNum,
+                        originalCau: q.cau,
                         text: q.noi_dung || q.giai_thich || q.dap_an || '',
                         explanation: q.giai_thich || '',
                         options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
