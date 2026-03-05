@@ -26,6 +26,8 @@ function HomeContent() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [editedPrompt, setEditedPrompt] = useState("");
   const [uploadJob, setUploadJob] = useState(null);
+  const [uploadJobId, setUploadJobId] = useState(null);
+  const [pollRef, setPollRef] = useState(null);
   const [toast, setToast] = useState(null);
   // Guest session
   const [guestName, setGuestName] = useState("");
@@ -154,6 +156,7 @@ function HomeContent() {
         withCredentials: true,
       });
       const { jobId } = data;
+      setUploadJobId(jobId);
 
       const pollInterval = setInterval(async () => {
         try {
@@ -161,18 +164,27 @@ function HomeContent() {
           setUploadJob(job);
           if (job.status === "done") {
             clearInterval(pollInterval);
+            setPollRef(null); setUploadJobId(null);
             setUploading(false);
             setUploadTitle(""); setUploadTags("");
             setTimeout(() => setUploadJob(null), 3000);
             fetchData();
-            showToast(`🎉 Thành công! Tìm thấy ${job.questionCount} câu hỏi`);
+            showToast(`Thành công! ${job.questionCount} câu hỏi`);
           } else if (job.status === "error") {
             clearInterval(pollInterval);
+            setPollRef(null); setUploadJobId(null);
             setUploading(false); setUploadJob(null);
             showToast("Lỗi xử lý PDF: " + job.error, "error");
+          } else if (job.status === "stopped") {
+            clearInterval(pollInterval);
+            setPollRef(null); setUploadJobId(null);
+            setUploading(false);
+            showToast(`Đã dừng. ${job.questionCount || 0} câu hỏi đã trích xuất`, "error");
+            setTimeout(() => setUploadJob(null), 3000);
           }
         } catch { /* ignore */ }
-      }, 2000);
+      }, 1500);
+      setPollRef(pollInterval);
 
     } catch (error) {
       setUploading(false); setUploadJob(null);
@@ -182,6 +194,16 @@ function HomeContent() {
       } else {
         showToast("Lỗi tải lên: " + msg, "error");
       }
+    }
+  };
+
+  const handleStopUpload = async () => {
+    if (!uploadJobId) return;
+    try {
+      await axios.post(`${API_URL}/pdf/stop/${uploadJobId}`, {}, { withCredentials: true });
+      showToast("Đang dừng xử lý...");
+    } catch (err) {
+      showToast("Không thể dừng: " + (err.response?.data?.error || err.message), "error");
     }
   };
 
@@ -274,11 +296,30 @@ function HomeContent() {
             <div className={styles.progressBox}>
               <div className={styles.progressHeader}>
                 <span className={styles.progressMsg}>{uploadJob.message}</span>
-                <span className={styles.progressPct}>{uploadJob.status === "done" ? "✅" : `${uploadJob.progress || 0}%`}</span>
+                <span className={styles.progressPct}>
+                  {uploadJob.status === "done" ? "Done" : uploadJob.status === "stopped" ? "Stopped" : `${uploadJob.progress || 0}%`}
+                </span>
               </div>
               <div className={styles.progressTrack}>
-                <div className={`${styles.progressFill} ${uploadJob.status === "done" ? styles.progressDone : ""}`} style={{ width: `${uploadJob.progress || 0}%` }} />
+                <div className={`${styles.progressFill} ${uploadJob.status === "done" ? styles.progressDone : uploadJob.status === "stopped" ? styles.progressStopped : ""}`} style={{ width: `${uploadJob.progress || 0}%` }} />
               </div>
+              {/* Batch details */}
+              {uploadJob.batches && uploadJob.batches.length > 0 && (
+                <div className={styles.batchList}>
+                  {uploadJob.batches.map((b, idx) => (
+                    <span key={idx} className={styles.batchItem}>
+                      B{b.batch}: +{b.questionCount}
+                    </span>
+                  ))}
+                  <span className={styles.batchTotal}>Tổng: {uploadJob.questionCount || 0} câu</span>
+                </div>
+              )}
+              {/* Stop button */}
+              {uploading && uploadJob.status === "processing" && (
+                <button className={styles.stopBtn} onClick={handleStopUpload}>
+                  Dừng xử lý
+                </button>
+              )}
             </div>
           )}
           {!uploading && (

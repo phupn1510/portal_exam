@@ -8,7 +8,7 @@ import pdfParser from '../services/pdfParser.js';
 import { PROMPT_TEMPLATES } from '../services/aiService.js';
 import { isAuthenticated, isAdmin, getCurrentUser } from '../services/authService.js';
 import { saveExam, getExams, getExamById, deleteExam, checkExamByHash, savePageImage, getPageImages, getPageImage } from '../services/database.js';
-import { createJob, updateJob, getJob } from '../services/jobService.js';
+import { createJob, updateJob, getJob, stopJob } from '../services/jobService.js';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
@@ -66,7 +66,7 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         try {
             const result = await pdfParser.parsePDF(filePath, fileId, (progress) => {
                 updateJob(jobId, progress);
-            }, templateId, userPrompt);
+            }, templateId, userPrompt, jobId);
 
             if (!result.success) {
                 updateJob(jobId, { status: 'error', error: result.error || 'Parsing failed' });
@@ -136,6 +136,14 @@ router.get('/progress/:jobId', (req, res) => {
     const job = getJob(req.params.jobId);
     if (!job) return res.status(404).json({ error: 'Job not found' });
     res.json(job);
+});
+
+// Stop a running job
+router.post('/stop/:jobId', isAuthenticated, isAdmin, (req, res) => {
+    const stopped = stopJob(req.params.jobId);
+    if (!stopped) return res.status(400).json({ error: 'Job not running' });
+    console.log(`⏹️ Job ${req.params.jobId} stopped by ${req.user.email}`);
+    res.json({ success: true, message: 'Job stopped' });
 });
 
 // Get quiz by ID (Public - for taking quiz)

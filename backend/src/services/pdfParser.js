@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import aiService from './aiService.js';
+import { isJobStopped } from './jobService.js';
 
 const execAsync = promisify(exec);
 
@@ -62,7 +63,7 @@ class PDFParser {
         return chunks.length > 0 ? chunks : [text];
     }
 
-    async parsePDF(filePath, fileId, onProgress = null, templateId = null, customPrompt = null) {
+    async parsePDF(filePath, fileId, onProgress = null, templateId = null, customPrompt = null, jobId = null) {
         try {
             const fileImagesDir = path.join(this.imagesDir, fileId);
             if (!fs.existsSync(fileImagesDir)) {
@@ -88,13 +89,13 @@ class PDFParser {
                 const provider = await aiService.resolveOcrProvider();
                 console.log(`Strategy: AI text parsing [provider=${provider}]`);
                 onProgress?.({ progress: 10, total: 100, message: `🤖 PDF có văn bản — đang phân tích bằng AI (${provider})...` });
-                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress, templateId, customPrompt);
+                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress, templateId, customPrompt, jobId);
             } else {
                 // Image-based PDF (scanned) → Vision OCR
                 const provider = await aiService.resolveOcrProvider();
                 console.log(`Strategy: AI Vision OCR (scanned PDF) [provider=${provider}]`);
                 onProgress?.({ progress: 5, total: 100, message: `🖼️ PDF dạng ảnh — đang chuyển đổi (${provider})...` });
-                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress, templateId);
+                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress, templateId, jobId);
             }
 
 
@@ -141,7 +142,7 @@ class PDFParser {
 
     // ─── AI Text Parsing ──────────────────────────────────────────────────────
 
-    async parseWithAIText(text, numPages, onProgress, templateId = null, customPrompt = null) {
+    async parseWithAIText(text, numPages, onProgress, templateId = null, customPrompt = null, jobId = null) {
         // Pre-clean text to remove watermarks, ads, noise
         const cleaned = this._cleanExtractedText(text);
         console.log(`Text after cleaning: ${cleaned.length} chars (was ${text.length})`);
@@ -151,13 +152,23 @@ class PDFParser {
         console.log(`Split into ${chunks.length} chunks`);
 
         const allQuestions = [];
+        const batches = [];
 
         for (let i = 0; i < chunks.length; i++) {
+            // Check if job was stopped
+            if (jobId && isJobStopped(jobId)) {
+                console.log(`⏹️ Job ${jobId} stopped at chunk ${i + 1}/${chunks.length}`);
+                break;
+            }
+
             const pct = Math.round(10 + ((i + 1) / chunks.length) * 85);
             onProgress?.({ progress: pct, total: 100, message: `🤖 Phân tích đoạn văn bản ${i + 1}/${chunks.length}...` });
             console.log(`  Parsing text chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)...`);
             const questions = await this.extractQuestionsFromText(chunks[i], templateId, customPrompt);
             allQuestions.push(...questions);
+
+            batches.push({ batch: i + 1, totalBatches: chunks.length, questionCount: questions.length });
+            onProgress?.({ progress: pct, total: 100, message: `🤖 Đoạn ${i + 1}/${chunks.length}: +${questions.length} câu (tổng: ${allQuestions.length})`, batches, questionCount: allQuestions.length });
         }
 
         // Deduplicate by (deNumber, originalCau) combo, then re-number globally
@@ -188,7 +199,7 @@ class PDFParser {
 
     // ─── AI Vision Parsing (for scanned/image PDFs) ───────────────────────────
 
-    async parseWithVision(filePath, fileId, fileImagesDir, numPages, onProgress, templateId = null) {
+    async parseWithVision(filePath, fileId, fileImagesDir, numPages, onProgress, templateId = null, jobId = null) {
         const hasPdftoppm = await this.checkPdftoppm();
         if (!hasPdftoppm) {
             console.warn('pdftoppm not found — falling back to regex parser');
@@ -219,8 +230,15 @@ class PDFParser {
         const batchSize = 4;
         const totalBatches = Math.ceil(imageFiles.length / batchSize);
         const allQuestions = [];
+        const batches = [];
 
         for (let i = 0; i < imageFiles.length; i += batchSize) {
+            // Check if job was stopped
+            if (jobId && isJobStopped(jobId)) {
+                console.log(`⏹️ Job ${jobId} stopped at batch ${Math.floor(i / batchSize) + 1}/${totalBatches}`);
+                break;
+            }
+
             const batchNum = Math.floor(i / batchSize) + 1;
             const pagesFrom = i + 1;
             const pagesTo = Math.min(i + batchSize, imageFiles.length);
@@ -229,13 +247,24 @@ class PDFParser {
             onProgress?.({
                 progress: pct,
                 total: 100,
-                message: `🔍 OCR trang ${pagesFrom}–${pagesTo} / ${imageFiles.length} (batch ${batchNum}/${totalBatches})...`
+                message: `🔍 OCR trang ${pagesFrom}–${pagesTo} / ${imageFiles.length} (batch ${batchNum}/${totalBatches})...`,
+                batches,
+                questionCount: allQuestions.length
             });
 
             const batch = imageFiles.slice(i, i + batchSize);
             console.log(`  OCR batch ${batchNum}: pages ${pagesFrom}-${pagesTo}`);
             const questions = await this.extractQuestionsFromImages(batch, templateId);
             allQuestions.push(...questions);
+
+            batches.push({ batch: batchNum, totalBatches, pages: `${pagesFrom}–${pagesTo}`, questionCount: questions.length });
+            onProgress?.({
+                progress: pct,
+                total: 100,
+                message: `🔍 Batch ${batchNum}/${totalBatches}: +${questions.length} câu (tổng: ${allQuestions.length})`,
+                batches,
+                questionCount: allQuestions.length
+            });
         }
 
         try {
