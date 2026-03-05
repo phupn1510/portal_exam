@@ -8,7 +8,7 @@ import pdfParser from '../services/pdfParser.js';
 import { PROMPT_TEMPLATES } from '../services/aiService.js';
 import { isAuthenticated, isAdmin, getCurrentUser } from '../services/authService.js';
 import { saveExam, getExams, getExamById, deleteExam, checkExamByHash, savePageImage, getPageImages, getPageImage } from '../services/database.js';
-import { createJob, updateJob, getJob, stopJob } from '../services/jobService.js';
+import { createJob, updateJob, getJob, getJobs, stopJob, resumeJob } from '../services/jobService.js';
 
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
@@ -58,7 +58,12 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
 
     console.log(`Processing PDF: ${originalName} (${fileId}) hash=${fileHash.slice(0,12)}... template=${templateId || 'default'} customPrompt=${userPrompt ? 'yes' : 'no'}`);
 
-    createJob(jobId);
+    createJob(jobId, {
+        filePath, fileId, templateId, customPrompt: userPrompt,
+        title: title || originalName.replace('.pdf', ''),
+        subject: subject || 'other', grade: grade || '2', tags, fileHash,
+        userEmail: req.user.email, originalName
+    });
     res.json({ success: true, jobId, status: 'processing' });
 
     // Run OCR/parsing in background
@@ -144,6 +149,123 @@ router.post('/stop/:jobId', isAuthenticated, isAdmin, (req, res) => {
     if (!stopped) return res.status(400).json({ error: 'Job not running' });
     console.log(`⏹️ Job ${req.params.jobId} stopped by ${req.user.email}`);
     res.json({ success: true, message: 'Job stopped' });
+});
+
+// List all jobs (Admin only)
+router.get('/jobs/list', isAuthenticated, isAdmin, (req, res) => {
+    res.json(getJobs());
+});
+
+// Get batch questions for a job
+router.get('/jobs/:jobId/questions', isAuthenticated, isAdmin, (req, res) => {
+    const job = getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json({
+        questions: job.questions || [],
+        batches: (job.batches || []).map(b => ({
+            ...b,
+            questions: b.questions?.map(q => ({ number: q.number, text: q.text?.slice(0, 80), type: q.type })) || []
+        }))
+    });
+});
+
+// Get quiz-format data from a job (partial results - for taking quiz while processing)
+router.get('/jobs/:jobId/quiz', (req, res) => {
+    const job = getJob(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (!job.questions || job.questions.length === 0) {
+        return res.status(404).json({ error: 'No questions extracted yet' });
+    }
+    res.json({
+        id: `job-${job.id}`,
+        title: job.meta?.title || 'Đang xử lý...',
+        filename: job.meta?.originalName || '',
+        subject: job.meta?.subject || 'other',
+        grade: job.meta?.grade || '2',
+        questions: job.questions,
+        questionCount: job.questions.length,
+        status: job.status,
+        isLive: job.status === 'processing',
+    });
+});
+
+// Resume a stopped/failed job
+router.post('/resume/:jobId', isAuthenticated, isAdmin, async (req, res) => {
+    const job = resumeJob(req.params.jobId);
+    if (!job) return res.status(400).json({ error: 'Job cannot be resumed' });
+
+    const { filePath, fileId, templateId, customPrompt, fileHash, userEmail, originalName,
+            title, subject, grade, tags, fileImagesDir } = job.meta;
+
+    // Check file still exists
+    if (!filePath || !fs.existsSync(filePath)) {
+        updateJob(job.id, { status: 'error', error: 'PDF file no longer available' });
+        return res.status(400).json({ error: 'PDF file no longer available' });
+    }
+
+    const lastBatch = job.batches?.length || 0;
+    console.log(`▶️ Resuming job ${job.id} from batch ${lastBatch + 1}`);
+    res.json({ success: true, jobId: job.id, resumeFromBatch: lastBatch });
+
+    // Run in background
+    (async () => {
+        try {
+            const result = await pdfParser.parsePDF(filePath, fileId, (progress) => {
+                updateJob(job.id, progress);
+            }, templateId, customPrompt, job.id, lastBatch);
+
+            if (!result.success) {
+                updateJob(job.id, { status: 'error', error: result.error || 'Parsing failed' });
+                return;
+            }
+
+            // Determine subject from filename
+            let quizSubject = subject || 'other';
+            const filenameLower = (originalName || '').toLowerCase();
+            if (filenameLower.includes('english') || filenameLower.includes('ioe') || filenameLower.includes('anh')) {
+                quizSubject = 'english';
+            } else if (filenameLower.includes('vietnam') || filenameLower.includes('việt')) {
+                quizSubject = 'vietnamese';
+            } else if (filenameLower.includes('math') || filenameLower.includes('toán') || filenameLower.includes('vioedu')) {
+                quizSubject = 'math';
+            }
+
+            const quiz = {
+                id: fileId,
+                filename: originalName,
+                title: title || (originalName || '').replace('.pdf', ''),
+                subject: quizSubject,
+                grade: grade || '2',
+                uploadedBy: userEmail,
+                uploadedAt: new Date().toISOString(),
+                questions: result.questions,
+                questionCount: result.questionCount,
+                status: 'ready'
+            };
+
+            let examDbId = null;
+            if (process.env.DATABASE_URL) {
+                examDbId = await saveExam(quiz.title, quizSubject, quiz, userEmail, fileHash, tags || [], quiz.grade);
+                if (examDbId && result.pageImages?.length) {
+                    for (const pi of result.pageImages) {
+                        await savePageImage(examDbId, pi.pageNumber, pi.base64);
+                    }
+                }
+            }
+
+            updateJob(job.id, {
+                status: 'done',
+                progress: 100,
+                total: 100,
+                message: `Hoàn thành! ${result.questionCount} câu hỏi`,
+                questionCount: result.questionCount,
+                result: { id: fileId, title: quiz.title, questionCount: result.questionCount, subject: quizSubject, grade: quiz.grade }
+            });
+        } catch (err) {
+            console.error('Resume processing error:', err);
+            updateJob(job.id, { status: 'error', error: err.message });
+        }
+    })();
 });
 
 // Get quiz by ID (Public - for taking quiz)

@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import aiService from './aiService.js';
-import { isJobStopped } from './jobService.js';
+import { isJobStopped, updateJob, getJob } from './jobService.js';
 
 const execAsync = promisify(exec);
 
@@ -63,7 +63,7 @@ class PDFParser {
         return chunks.length > 0 ? chunks : [text];
     }
 
-    async parsePDF(filePath, fileId, onProgress = null, templateId = null, customPrompt = null, jobId = null) {
+    async parsePDF(filePath, fileId, onProgress = null, templateId = null, customPrompt = null, jobId = null, resumeFromBatch = 0) {
         try {
             const fileImagesDir = path.join(this.imagesDir, fileId);
             if (!fs.existsSync(fileImagesDir)) {
@@ -89,13 +89,13 @@ class PDFParser {
                 const provider = await aiService.resolveOcrProvider();
                 console.log(`Strategy: AI text parsing [provider=${provider}]`);
                 onProgress?.({ progress: 10, total: 100, message: `🤖 PDF có văn bản — đang phân tích bằng AI (${provider})...` });
-                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress, templateId, customPrompt, jobId);
+                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress, templateId, customPrompt, jobId, resumeFromBatch);
             } else {
                 // Image-based PDF (scanned) → Vision OCR
                 const provider = await aiService.resolveOcrProvider();
                 console.log(`Strategy: AI Vision OCR (scanned PDF) [provider=${provider}]`);
                 onProgress?.({ progress: 5, total: 100, message: `🖼️ PDF dạng ảnh — đang chuyển đổi (${provider})...` });
-                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress, templateId, jobId);
+                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress, templateId, jobId, resumeFromBatch);
             }
 
 
@@ -142,7 +142,7 @@ class PDFParser {
 
     // ─── AI Text Parsing ──────────────────────────────────────────────────────
 
-    async parseWithAIText(text, numPages, onProgress, templateId = null, customPrompt = null, jobId = null) {
+    async parseWithAIText(text, numPages, onProgress, templateId = null, customPrompt = null, jobId = null, resumeFromBatch = 0) {
         // Pre-clean text to remove watermarks, ads, noise
         const cleaned = this._cleanExtractedText(text);
         console.log(`Text after cleaning: ${cleaned.length} chars (was ${text.length})`);
@@ -151,10 +151,11 @@ class PDFParser {
         const chunks = this._smartChunk(cleaned);
         console.log(`Split into ${chunks.length} chunks`);
 
-        const allQuestions = [];
-        const batches = [];
+        const existingJob = jobId ? getJob(jobId) : null;
+        const allQuestions = existingJob?.questions?.slice() || [];
+        const batches = existingJob?.batches?.slice() || [];
 
-        for (let i = 0; i < chunks.length; i++) {
+        for (let i = resumeFromBatch; i < chunks.length; i++) {
             // Check if job was stopped
             if (jobId && isJobStopped(jobId)) {
                 console.log(`⏹️ Job ${jobId} stopped at chunk ${i + 1}/${chunks.length}`);
@@ -167,7 +168,13 @@ class PDFParser {
             const questions = await this.extractQuestionsFromText(chunks[i], templateId, customPrompt);
             allQuestions.push(...questions);
 
-            batches.push({ batch: i + 1, totalBatches: chunks.length, questionCount: questions.length });
+            const batchInfo = { batch: i + 1, totalBatches: chunks.length, questionCount: questions.length, questions };
+            batches.push(batchInfo);
+
+            if (jobId) {
+                updateJob(jobId, { questions: allQuestions, batches, questionCount: allQuestions.length, 'meta.lastBatchIndex': i + 1 });
+            }
+
             onProgress?.({ progress: pct, total: 100, message: `🤖 Đoạn ${i + 1}/${chunks.length}: +${questions.length} câu (tổng: ${allQuestions.length})`, batches, questionCount: allQuestions.length });
         }
 
@@ -199,7 +206,7 @@ class PDFParser {
 
     // ─── AI Vision Parsing (for scanned/image PDFs) ───────────────────────────
 
-    async parseWithVision(filePath, fileId, fileImagesDir, numPages, onProgress, templateId = null, jobId = null) {
+    async parseWithVision(filePath, fileId, fileImagesDir, numPages, onProgress, templateId = null, jobId = null, resumeFromBatch = 0) {
         const hasPdftoppm = await this.checkPdftoppm();
         if (!hasPdftoppm) {
             console.warn('pdftoppm not found — falling back to regex parser');
@@ -229,10 +236,14 @@ class PDFParser {
 
         const batchSize = 4;
         const totalBatches = Math.ceil(imageFiles.length / batchSize);
-        const allQuestions = [];
-        const batches = [];
 
-        for (let i = 0; i < imageFiles.length; i += batchSize) {
+        // Resume support: pick up existing questions and batches from job
+        const existingJob = jobId ? getJob(jobId) : null;
+        const startBatchIndex = resumeFromBatch > 0 ? resumeFromBatch : 0;
+        const allQuestions = existingJob?.questions?.slice() || [];
+        const batches = existingJob?.batches?.slice() || [];
+
+        for (let i = startBatchIndex * batchSize; i < imageFiles.length; i += batchSize) {
             // Check if job was stopped
             if (jobId && isJobStopped(jobId)) {
                 console.log(`⏹️ Job ${jobId} stopped at batch ${Math.floor(i / batchSize) + 1}/${totalBatches}`);
@@ -257,7 +268,14 @@ class PDFParser {
             const questions = await this.extractQuestionsFromImages(batch, templateId);
             allQuestions.push(...questions);
 
-            batches.push({ batch: batchNum, totalBatches, pages: `${pagesFrom}–${pagesTo}`, questionCount: questions.length });
+            const batchInfo = { batch: batchNum, totalBatches, pages: `${pagesFrom}–${pagesTo}`, questionCount: questions.length, questions };
+            batches.push(batchInfo);
+
+            // Persist to job store (for resume & live preview)
+            if (jobId) {
+                updateJob(jobId, { questions: allQuestions, batches, questionCount: allQuestions.length, 'meta.lastBatchIndex': batchNum });
+            }
+
             onProgress?.({
                 progress: pct,
                 total: 100,

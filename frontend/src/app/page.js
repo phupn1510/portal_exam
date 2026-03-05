@@ -29,6 +29,10 @@ function HomeContent() {
   const [uploadJobId, setUploadJobId] = useState(null);
   const [pollRef, setPollRef] = useState(null);
   const [toast, setToast] = useState(null);
+  // Job list
+  const [jobs, setJobs] = useState([]);
+  const [showJobs, setShowJobs] = useState(false);
+  const [jobsPollRef, setJobsPollRef] = useState(null);
   // Guest session
   const [guestName, setGuestName] = useState("");
   const [guestSession, setGuestSession] = useState(null); // { name, scores }
@@ -107,6 +111,53 @@ function HomeContent() {
       setLoading(false);
     }
   };
+
+  // ── Job list ────────────────────────────────────────────────────────────────
+  const fetchJobs = async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/pdf/jobs/list`, { withCredentials: true });
+      setJobs(data);
+      return data;
+    } catch { return []; }
+  };
+
+  const handleResumeJob = async (jobId) => {
+    try {
+      await axios.post(`${API_URL}/pdf/resume/${jobId}`, {}, { withCredentials: true });
+      showToast("Đang tiếp tục xử lý...");
+      fetchJobs();
+    } catch (err) {
+      showToast(err.response?.data?.error || "Không thể resume", "error");
+    }
+  };
+
+  const handleStopJob = async (jobId) => {
+    try {
+      await axios.post(`${API_URL}/pdf/stop/${jobId}`, {}, { withCredentials: true });
+      showToast("Đang dừng...");
+      fetchJobs();
+    } catch (err) {
+      showToast(err.response?.data?.error || "Không thể dừng", "error");
+    }
+  };
+
+  // Auto-poll jobs when panel is open and there are processing jobs
+  useEffect(() => {
+    if (!showJobs || !user?.isAdmin) {
+      if (jobsPollRef) { clearInterval(jobsPollRef); setJobsPollRef(null); }
+      return;
+    }
+    fetchJobs();
+    const iv = setInterval(async () => {
+      const data = await fetchJobs();
+      // Stop polling if no processing jobs
+      if (!data.some(j => j.status === "processing")) {
+        clearInterval(iv); setJobsPollRef(null);
+      }
+    }, 3000);
+    setJobsPollRef(iv);
+    return () => clearInterval(iv);
+  }, [showJobs, user?.isAdmin]);
 
   const handleLogin = () => { window.location.href = `${API_URL}/auth/google`; };
 
@@ -376,6 +427,66 @@ function HomeContent() {
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {/* Job List - Admin Only */}
+      {user?.isAdmin && (
+        <div className={styles.jobSection}>
+          <button className={styles.jobToggle} onClick={() => setShowJobs(!showJobs)}>
+            {showJobs ? "Ẩn" : "Hiện"} danh sách xử lý ({jobs.length || "..."})
+          </button>
+          {showJobs && (
+            <div className={styles.jobList}>
+              {jobs.length === 0 && <p className={styles.jobEmpty}>Không có job nào</p>}
+              {jobs.map(job => (
+                <div key={job.id} className={styles.jobCard}>
+                  <div className={styles.jobHeader}>
+                    <span className={styles.jobTitle}>{job.meta?.title || job.meta?.originalName || job.id.slice(0, 8)}</span>
+                    <span className={`${styles.jobBadge} ${styles[`jobBadge_${job.status}`]}`}>
+                      {job.status === "processing" ? "Đang xử lý" : job.status === "done" ? "Hoàn thành" : job.status === "stopped" ? "Đã dừng" : "Lỗi"}
+                    </span>
+                  </div>
+                  {/* Progress */}
+                  <div className={styles.jobProgress}>
+                    <div className={styles.progressTrack}>
+                      <div
+                        className={`${styles.progressFill} ${job.status === "done" ? styles.progressDone : job.status === "stopped" ? styles.progressStopped : job.status === "error" ? styles.progressError : ""}`}
+                        style={{ width: `${job.progress || 0}%` }}
+                      />
+                    </div>
+                    <span className={styles.jobPct}>{job.progress || 0}%</span>
+                  </div>
+                  <div className={styles.jobMeta}>
+                    <span>{job.message}</span>
+                    <span>{job.batchQuestionCount || job.questionCount || 0} câu</span>
+                  </div>
+                  {/* Batch chips */}
+                  {job.batches && job.batches.length > 0 && (
+                    <div className={styles.batchList}>
+                      {job.batches.map((b, idx) => (
+                        <span key={idx} className={styles.batchItem}>B{b.batch}: +{b.questionCount}</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Actions */}
+                  <div className={styles.jobActions}>
+                    {job.status === "processing" && (
+                      <button className={styles.jobStopBtn} onClick={() => handleStopJob(job.id)}>Dừng</button>
+                    )}
+                    {(job.status === "stopped" || job.status === "error") && (
+                      <button className={styles.jobResumeBtn} onClick={() => handleResumeJob(job.id)}>Tiếp tục</button>
+                    )}
+                    {(job.batchQuestionCount > 0 || job.questionCount > 0) && (
+                      <Link href={`/quiz/live?jobId=${job.id}`} className={styles.jobQuizBtn}>
+                        Làm bài ({job.batchQuestionCount || job.questionCount} câu) →
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

@@ -563,6 +563,79 @@
 .gradeBtn:hover { border-color: #4ECDC4; color: #4ECDC4; }
 .gradeActive { background: #4ECDC4 !important; border-color: #4ECDC4 !important; color: white !important; }
 
+/* ── Job list section ────────────────────────────────────────── */
+.jobSection { margin-bottom: 24px; }
+.jobToggle {
+  background: rgba(255,255,255,0.15); color: white;
+  border: 2px solid rgba(255,255,255,0.3); border-radius: 12px;
+  padding: 10px 20px; font-weight: 600; cursor: pointer;
+  font-size: 0.9rem; transition: all 0.2s;
+}
+.jobToggle:hover { background: rgba(255,255,255,0.25); }
+.jobList {
+  display: flex; flex-direction: column; gap: 12px;
+  margin-top: 12px;
+}
+.jobEmpty { color: rgba(255,255,255,0.6); text-align: center; padding: 20px; }
+.jobCard {
+  background: white; border-radius: 14px; padding: 16px 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+}
+.jobHeader {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 8px;
+}
+.jobTitle {
+  font-weight: 600; color: #2C3E50; font-size: 0.95rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 70%;
+}
+.jobBadge {
+  padding: 3px 10px; border-radius: 10px;
+  font-size: 0.72rem; font-weight: 700;
+}
+.jobBadge_processing { background: #e8f4fd; color: #2980b9; }
+.jobBadge_done { background: #e8f5e9; color: #27ae60; }
+.jobBadge_stopped { background: #fff3e0; color: #f39c12; }
+.jobBadge_error { background: #fdecea; color: #e74c3c; }
+.jobProgress {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.jobProgress .progressTrack { flex: 1; height: 6px; }
+.jobPct { font-size: 0.75rem; font-weight: 700; color: #888; min-width: 35px; text-align: right; }
+.progressError {
+  background: linear-gradient(90deg, #e74c3c, #ff6b6b);
+  animation: none;
+}
+.jobMeta {
+  display: flex; justify-content: space-between;
+  font-size: 0.8rem; color: #888; margin-bottom: 6px;
+}
+.jobActions {
+  display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;
+}
+.jobStopBtn {
+  padding: 6px 14px; background: #E74C3C; color: white;
+  border: none; border-radius: 8px; font-weight: 600;
+  font-size: 0.8rem; cursor: pointer;
+}
+.jobStopBtn:hover { background: #c0392b; }
+.jobResumeBtn {
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #4ECDC4, #6EE7DE);
+  color: white; border: none; border-radius: 8px;
+  font-weight: 600; font-size: 0.8rem; cursor: pointer;
+}
+.jobResumeBtn:hover { transform: translateY(-1px); }
+.jobQuizBtn {
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; border: none; border-radius: 8px;
+  font-weight: 600; font-size: 0.8rem; cursor: pointer;
+  text-decoration: none;
+}
+.jobQuizBtn:hover { transform: translateY(-1px); }
+
 /* ── Quiz card meta row (grade pill + date) ──────────────────── */
 .metaRow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .gradePill {
