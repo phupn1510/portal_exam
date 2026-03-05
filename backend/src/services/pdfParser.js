@@ -62,7 +62,7 @@ class PDFParser {
         return chunks.length > 0 ? chunks : [text];
     }
 
-    async parsePDF(filePath, fileId, onProgress = null) {
+    async parsePDF(filePath, fileId, onProgress = null, templateId = null) {
         try {
             const fileImagesDir = path.join(this.imagesDir, fileId);
             if (!fs.existsSync(fileImagesDir)) {
@@ -88,13 +88,13 @@ class PDFParser {
                 const provider = await aiService.resolveOcrProvider();
                 console.log(`Strategy: AI text parsing [provider=${provider}]`);
                 onProgress?.({ progress: 10, total: 100, message: `🤖 PDF có văn bản — đang phân tích bằng AI (${provider})...` });
-                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress);
+                questions = await this.parseWithAIText(fullText, pdfData.numpages, onProgress, templateId);
             } else {
                 // Image-based PDF (scanned) → Vision OCR
                 const provider = await aiService.resolveOcrProvider();
                 console.log(`Strategy: AI Vision OCR (scanned PDF) [provider=${provider}]`);
                 onProgress?.({ progress: 5, total: 100, message: `🖼️ PDF dạng ảnh — đang chuyển đổi (${provider})...` });
-                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress);
+                questions = await this.parseWithVision(filePath, fileId, fileImagesDir, pdfData.numpages, onProgress, templateId);
             }
 
 
@@ -116,7 +116,7 @@ class PDFParser {
 
     // ─── AI Text Parsing ──────────────────────────────────────────────────────
 
-    async parseWithAIText(text, numPages, onProgress) {
+    async parseWithAIText(text, numPages, onProgress, templateId = null) {
         // Pre-clean text to remove watermarks, ads, noise
         const cleaned = this._cleanExtractedText(text);
         console.log(`Text after cleaning: ${cleaned.length} chars (was ${text.length})`);
@@ -131,7 +131,7 @@ class PDFParser {
             const pct = Math.round(10 + ((i + 1) / chunks.length) * 85);
             onProgress?.({ progress: pct, total: 100, message: `🤖 Phân tích đoạn văn bản ${i + 1}/${chunks.length}...` });
             console.log(`  Parsing text chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)...`);
-            const questions = await this.extractQuestionsFromText(chunks[i]);
+            const questions = await this.extractQuestionsFromText(chunks[i], templateId);
             allQuestions.push(...questions);
         }
 
@@ -145,9 +145,9 @@ class PDFParser {
         });
     }
 
-    async extractQuestionsFromText(text) {
+    async extractQuestionsFromText(text, templateId = null) {
         // Step 1: OCR — extract raw data
-        const raw = await aiService.parseQuestionsFromText(text);
+        const raw = await aiService.parseQuestionsFromText(text, null, templateId);
         if (!raw || raw.length === 0) return [];
 
         // Step 2: Analyze — classify types, verify, mark interactive
@@ -160,7 +160,7 @@ class PDFParser {
 
     // ─── AI Vision Parsing (for scanned/image PDFs) ───────────────────────────
 
-    async parseWithVision(filePath, fileId, fileImagesDir, numPages, onProgress) {
+    async parseWithVision(filePath, fileId, fileImagesDir, numPages, onProgress, templateId = null) {
         const hasPdftoppm = await this.checkPdftoppm();
         if (!hasPdftoppm) {
             console.warn('pdftoppm not found — falling back to regex parser');
@@ -206,7 +206,7 @@ class PDFParser {
 
             const batch = imageFiles.slice(i, i + batchSize);
             console.log(`  OCR batch ${batchNum}: pages ${pagesFrom}-${pagesTo}`);
-            const questions = await this.extractQuestionsFromImages(batch);
+            const questions = await this.extractQuestionsFromImages(batch, templateId);
             allQuestions.push(...questions);
         }
 
@@ -222,10 +222,10 @@ class PDFParser {
         });
     }
 
-    async extractQuestionsFromImages(imagePaths) {
+    async extractQuestionsFromImages(imagePaths, templateId = null) {
         // Step 1: OCR
         const base64Images = imagePaths.map(p => fs.readFileSync(p).toString('base64'));
-        const raw = await aiService.parseQuestionsFromImages(base64Images);
+        const raw = await aiService.parseQuestionsFromImages(base64Images, null, templateId);
         if (!raw || raw.length === 0) return [];
 
         // Step 2: Analyze (run once per batch, not per page)
@@ -253,7 +253,7 @@ class PDFParser {
                 id: uuidv4(),
                 number: q.cau ?? (i + 1),
                 deNumber: q.de_so ?? 1,
-                text: q.giai_thich || q.dap_an || '',
+                text: q.noi_dung || q.giai_thich || q.dap_an || '',
                 explanation: q.giai_thich || '',
                 options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
                 correctAnswer: q.correct || q.dap_an || null,
@@ -274,12 +274,12 @@ class PDFParser {
                         id: uuidv4(),
                         number: q.cau ?? globalIndex,
                         deNumber: deNum,
-                        text: q.giai_thich || q.dap_an || '',
+                        text: q.noi_dung || q.giai_thich || q.dap_an || '',
                         explanation: q.giai_thich || '',
-                        options: [],
+                        options: (q.options || []).map(o => ({ letter: o.letter, text: o.text })),
                         correctAnswer: q.dap_an || null,
-                        type: 'reading',
-                        interactive: false,
+                        type: q.type || 'reading',
+                        interactive: (q.options || []).length > 0,
                         imageUrl: null
                     });
                     globalIndex++;

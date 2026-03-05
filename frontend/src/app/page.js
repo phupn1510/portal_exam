@@ -21,6 +21,8 @@ function HomeContent() {
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadGrade, setUploadGrade] = useState("2");
   const [uploadTags, setUploadTags] = useState("");
+  const [uploadTemplate, setUploadTemplate] = useState("generic");
+  const [templates, setTemplates] = useState([]);
   const [uploadJob, setUploadJob] = useState(null);
   const [toast, setToast] = useState(null);
   // Guest session
@@ -80,13 +82,15 @@ function HomeContent() {
 
   const fetchData = async () => {
     try {
-      const [quizzesRes, subjectsRes, userRes] = await Promise.all([
+      const [quizzesRes, subjectsRes, userRes, templatesRes] = await Promise.all([
         axios.get(`${API_URL}/pdf`, { withCredentials: true }),
         axios.get(`${API_URL}/pdf/meta/subjects`, { withCredentials: true }),
         axios.get(`${API_URL}/user`, { withCredentials: true }),
+        axios.get(`${API_URL}/pdf/meta/templates`, { withCredentials: true }).catch(() => ({ data: [] })),
       ]);
       setQuizzes(quizzesRes.data);
       setSubjects(subjectsRes.data);
+      if (templatesRes.data?.length) setTemplates(templatesRes.data);
       const fetchedUser = userRes.data.user;
       setUser(fetchedUser);
       // Show guest modal only if not logged in and no guest name set
@@ -122,6 +126,9 @@ function HomeContent() {
     formData.append("title", uploadTitle || file.name.replace(".pdf", ""));
     formData.append("grade", uploadGrade);
     formData.append("tags", uploadTags);
+    if (uploadTemplate && uploadTemplate !== "generic") {
+      formData.append("promptTemplate", uploadTemplate);
+    }
 
     try {
       const { data } = await axios.post(`${API_URL}/pdf/upload`, formData, {
@@ -275,6 +282,17 @@ function HomeContent() {
                 <input type="text" placeholder="Tags: ioe, lớp2, anh..." value={uploadTags} onChange={e => setUploadTags(e.target.value)} className={styles.input} />
                 <select value={uploadGrade} onChange={e => setUploadGrade(e.target.value)} className={styles.select}>
                   {[1,2,3,4,5,6,7,8,9,10,11,12].map(g => <option key={g} value={String(g)}>Lớp {g}</option>)}
+                </select>
+                <select value={uploadTemplate} onChange={e => setUploadTemplate(e.target.value)} className={styles.select} title="Chọn prompt template cho OCR">
+                  {templates.length > 0 ? templates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  )) : (
+                    <>
+                      <option value="generic">Tự động (Generic)</option>
+                      <option value="ioe_english">IOE English</option>
+                      <option value="vioedu_answer">VIOEDU Đáp án</option>
+                    </>
+                  )}
                 </select>
               </div>
             </>

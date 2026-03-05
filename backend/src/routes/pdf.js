@@ -5,6 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import pdfParser from '../services/pdfParser.js';
+import { PROMPT_TEMPLATES } from '../services/aiService.js';
 import { isAuthenticated, isAdmin, getCurrentUser } from '../services/authService.js';
 import { saveExam, getExams, getExamById, deleteExam, checkExamByHash } from '../services/database.js';
 import { createJob, updateJob, getJob } from '../services/jobService.js';
@@ -26,8 +27,9 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         return res.status(400).json({ error: 'No PDF file uploaded' });
     }
 
-    const { subject, title, grade, tags: tagsRaw } = req.body;
+    const { subject, title, grade, tags: tagsRaw, promptTemplate } = req.body;
     const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+    const templateId = promptTemplate && PROMPT_TEMPLATES[promptTemplate] ? promptTemplate : null;
     const fileId = uuidv4();
     const jobId = uuidv4();
     const filePath = req.file.path;
@@ -53,7 +55,7 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         originalName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     } catch { /* keep original if decode fails */ }
 
-    console.log(`Processing PDF: ${originalName} (${fileId}) hash=${fileHash.slice(0,12)}...`);
+    console.log(`Processing PDF: ${originalName} (${fileId}) hash=${fileHash.slice(0,12)}... template=${templateId || 'default'}`);
 
     createJob(jobId);
     res.json({ success: true, jobId, status: 'processing' });
@@ -63,7 +65,7 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
         try {
             const result = await pdfParser.parsePDF(filePath, fileId, (progress) => {
                 updateJob(jobId, progress);
-            });
+            }, templateId);
 
             if (!result.success) {
                 updateJob(jobId, { status: 'error', error: result.error || 'Parsing failed' });
@@ -175,6 +177,16 @@ router.get('/', async (req, res) => {
     }
     
     res.json(quizList);
+});
+
+// Get prompt templates list
+router.get('/meta/templates', (req, res) => {
+    const list = Object.values(PROMPT_TEMPLATES).map(t => ({
+        id: t.id,
+        name: t.name,
+        description: t.description
+    }));
+    res.json(list);
 });
 
 // Get subjects list
