@@ -263,29 +263,31 @@ Với mỗi câu, xác định:
 - "interactive": true nếu học sinh có thể chọn đáp án (mcq, true_false), false nếu điền tay (fill_blank)
 - "options": [{letter, text}] nếu là MCQ (trích từ giai_thich hoặc suy luận)
 - "correct": đáp án đúng (string)
-- Giữ nguyên "de_so", "cau", "dap_an", "giai_thich"
+- Giữ nguyên "de_so", "cau", "dap_an", "giai_thich", "noi_dung" (QUAN TRỌNG: giữ nguyên noi_dung tiếng Anh gốc, KHÔNG dịch sang tiếng Việt)
 
 FORMAT OUTPUT:
 [
   {
     "de_so": 1,
     "cau": 1,
-    "type": "true_false",
+    "noi_dung": "Which word has the sound like the letter R in RAINBOW?",
+    "type": "mcq",
     "interactive": true,
-    "dap_an": "Đúng",
-    "correct": "Đúng",
-    "options": [{"letter": "A", "text": "Đúng"}, {"letter": "B", "text": "Sai"}],
-    "giai_thich": "..."
+    "dap_an": "B",
+    "correct": "B",
+    "options": [{"letter": "A", "text": "cake"}, {"letter": "B", "text": "road"}, {"letter": "C", "text": "vase"}, {"letter": "D", "text": "lake"}],
+    "giai_thich": "Which word has the sound like R in RAINBOW? A. cake B. road C. vase D. lake"
   },
   {
     "de_so": 1,
     "cau": 2,
+    "noi_dung": "5 + 3 = ?",
     "type": "fill_blank",
     "interactive": false,
-    "dap_an": "5",
-    "correct": "5",
+    "dap_an": "8",
+    "correct": "8",
     "options": [],
-    "giai_thich": "..."
+    "giai_thich": "5 + 3 = 8"
   }
 ]`;
 
@@ -296,7 +298,7 @@ FORMAT OUTPUT:
                     { role: 'system', content: 'Bạn là chuyên gia phân tích đề thi. Chỉ trả về JSON array.' },
                     { role: 'user', content: prompt }
                 ],
-                max_tokens: 6000,
+                max_tokens: 16000,
                 temperature: 0
             });
             const content = response.choices[0].message.content.trim();
@@ -352,7 +354,7 @@ FORMAT OUTPUT:
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: `Trích xuất tất cả câu hỏi và đáp án từ nội dung sau:\n\n${text}` }
                 ],
-                max_tokens: 8000,
+                max_tokens: 16000,
                 temperature: 0
             });
 
@@ -402,7 +404,7 @@ FORMAT OUTPUT:
                         ]
                     }
                 ],
-                max_tokens: 8000,
+                max_tokens: 16000,
                 temperature: 0
             });
 

@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import pdfParser from '../services/pdfParser.js';
 import { PROMPT_TEMPLATES } from '../services/aiService.js';
 import { isAuthenticated, isAdmin, getCurrentUser } from '../services/authService.js';
-import { saveExam, getExams, getExamById, deleteExam, checkExamByHash } from '../services/database.js';
+import { saveExam, getExams, getExamById, deleteExam, checkExamByHash, savePageImage, getPageImages, getPageImage } from '../services/database.js';
 import { createJob, updateJob, getJob } from '../services/jobService.js';
 
 const router = express.Router();
@@ -96,8 +96,16 @@ router.post('/upload', isAuthenticated, isAdmin, upload.single('pdf'), async (re
                 status: 'ready'
             };
 
+            let examDbId = null;
             if (process.env.DATABASE_URL) {
-                await saveExam(quiz.title, quizSubject, quiz, req.user.email, fileHash, tags, quiz.grade);
+                examDbId = await saveExam(quiz.title, quizSubject, quiz, req.user.email, fileHash, tags, quiz.grade);
+                // Save page images to DB
+                if (examDbId && result.pageImages?.length) {
+                    for (const pi of result.pageImages) {
+                        await savePageImage(examDbId, pi.pageNumber, pi.base64);
+                    }
+                    console.log(`📸 Saved ${result.pageImages.length} page images for exam ${examDbId}`);
+                }
             }
 
             updateJob(jobId, {
@@ -177,6 +185,25 @@ router.get('/', async (req, res) => {
     }
     
     res.json(quizList);
+});
+
+// Get page images list for an exam
+router.get('/:id/pages', async (req, res) => {
+    const { id } = req.params;
+    if (!process.env.DATABASE_URL) return res.json([]);
+    const pages = await getPageImages(id);
+    res.json(pages.map(p => ({ pageNumber: p.page_number })));
+});
+
+// Get a specific page image (returns JPEG)
+router.get('/:id/page/:pageNum', async (req, res) => {
+    const { id, pageNum } = req.params;
+    if (!process.env.DATABASE_URL) return res.status(404).json({ error: 'No images' });
+    const base64 = await getPageImage(id, parseInt(pageNum));
+    if (!base64) return res.status(404).json({ error: 'Page image not found' });
+    const buffer = Buffer.from(base64, 'base64');
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
+    res.send(buffer);
 });
 
 // Get prompt templates list

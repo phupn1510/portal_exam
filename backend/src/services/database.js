@@ -34,6 +34,16 @@ export async function initDatabase() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS exam_page_images (
+        id SERIAL PRIMARY KEY,
+        exam_id INTEGER NOT NULL,
+        page_number INTEGER NOT NULL,
+        image_data TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    try { await client.query(`CREATE INDEX IF NOT EXISTS idx_page_images_exam ON exam_page_images(exam_id)`); } catch (_) {}
     console.log('Database tables initialized');
   } finally {
     client.release();
@@ -66,7 +76,33 @@ export async function getExamById(id) {
 }
 
 export async function deleteExam(id) {
+  await pool.query('DELETE FROM exam_page_images WHERE exam_id = $1', [id]);
   await pool.query('DELETE FROM exams WHERE id = $1', [id]);
+}
+
+// ─── Page Images ─────────────────────────────────────────────────────────────
+
+export async function savePageImage(examId, pageNumber, base64Data) {
+  await pool.query(
+    'INSERT INTO exam_page_images (exam_id, page_number, image_data) VALUES ($1, $2, $3)',
+    [examId, pageNumber, base64Data]
+  );
+}
+
+export async function getPageImages(examId) {
+  const result = await pool.query(
+    'SELECT page_number FROM exam_page_images WHERE exam_id = $1 ORDER BY page_number',
+    [examId]
+  );
+  return result.rows;
+}
+
+export async function getPageImage(examId, pageNumber) {
+  const result = await pool.query(
+    'SELECT image_data FROM exam_page_images WHERE exam_id = $1 AND page_number = $2',
+    [examId, pageNumber]
+  );
+  return result.rows[0]?.image_data ?? null;
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

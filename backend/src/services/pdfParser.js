@@ -98,13 +98,38 @@ class PDFParser {
             }
 
 
+            // Filter out listening questions (can't play audio on web)
+            const before = questions.length;
+            questions = questions.filter(q => {
+                if (q.type === 'listening') return false;
+                const txt = (q.text || '').toLowerCase();
+                if (txt.includes('nhấn giữ ctrl') || txt.includes('bấm chuột để nghe') || txt.includes('nhận giữ ctrl')) return false;
+                return true;
+            });
+            if (questions.length < before) {
+                console.log(`🎧 Filtered ${before - questions.length} listening questions`);
+                // Re-number after filtering
+                questions.forEach((q, i) => { q.number = i + 1; });
+            }
+
             console.log(`✅ Parsed ${questions.length} questions`);
+
+            // Generate page images for the quiz viewer
+            let pageImages = [];
+            try {
+                pageImages = await this.generatePageImages(filePath, fileId, fileImagesDir, pdfData.numpages);
+                console.log(`📸 Generated ${pageImages.length} page images`);
+            } catch (err) {
+                console.warn('⚠️ Could not generate page images:', err.message);
+            }
+
             onProgress?.({ progress: 100, total: 100, message: `✅ Hoàn thành! Tìm thấy ${questions.length} câu hỏi`, questionCount: questions.length });
 
             return {
                 success: true,
                 questionCount: questions.length,
                 questions,
+                pageImages,
                 pagesProcessed: pdfData.numpages
             };
 
@@ -170,7 +195,7 @@ class PDFParser {
             return [];
         }
 
-        const maxPages = Math.min(numPages, 20);
+        const maxPages = Math.min(numPages, 80);
         const outputBase = path.join(fileImagesDir, 'page');
 
         try {
@@ -313,6 +338,44 @@ class PDFParser {
     }
 
 
+
+    // ─── Page Image Generation ─────────────────────────────────────────────────
+
+    async generatePageImages(filePath, fileId, fileImagesDir, numPages) {
+        const hasPdftoppm = await this.checkPdftoppm();
+        if (!hasPdftoppm) return [];
+
+        if (!fs.existsSync(fileImagesDir)) {
+            fs.mkdirSync(fileImagesDir, { recursive: true });
+        }
+
+        const maxPages = Math.min(numPages, 30);
+        const outputBase = path.join(fileImagesDir, 'pg');
+
+        try {
+            // Lower DPI (100) for smaller file sizes, JPEG quality 70
+            await execAsync(
+                `pdftoppm -r 100 -jpeg -jpegopt quality=70 -l ${maxPages} "${filePath}" "${outputBase}"`
+            );
+        } catch (err) {
+            console.warn('pdftoppm failed for page images:', err.message);
+            return [];
+        }
+
+        const imageFiles = fs.readdirSync(fileImagesDir)
+            .filter(f => f.startsWith('pg') && (f.endsWith('.jpg') || f.endsWith('.jpeg')))
+            .sort();
+
+        const pageImages = [];
+        for (let i = 0; i < imageFiles.length; i++) {
+            const imgPath = path.join(fileImagesDir, imageFiles[i]);
+            const base64 = fs.readFileSync(imgPath).toString('base64');
+            pageImages.push({ pageNumber: i + 1, base64 });
+            fs.unlinkSync(imgPath); // clean up file after reading
+        }
+
+        return pageImages;
+    }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
